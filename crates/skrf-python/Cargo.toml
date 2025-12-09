@@ -1,0 +1,15 @@
+[package]
+name = "skrf-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings for skrf-core"
+
+[lib]
+crate-type = ["cdylib"]
+name = "skrf_python"
+
+[dependencies]
+skrf-core = { path = "../skrf-core" }
+pyo3.workspace = true
+numpy.workspace = true
