@@ -14,6 +14,9 @@
 mod algorithms;
 mod core;
 mod model;
+pub mod passivity;
+pub mod spice;
 
 pub use self::core::VectorFitting;
 pub use algorithms::{InitPoleSpacing, PoleRelocationResult};
+pub use passivity::{PassivityEnforceResult, PassivityTestResult};

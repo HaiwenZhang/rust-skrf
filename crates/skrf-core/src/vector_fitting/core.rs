@@ -251,6 +251,200 @@ impl VectorFitting {
 
         Some((error_sum / nfreq as f64).sqrt())
     }
+
+    /// Write SPICE subcircuit netlist to a file
+    ///
+    /// Creates an equivalent N-port subcircuit based on its vector fitted scattering (S)
+    /// parameter responses in SPICE simulator netlist syntax (compatible with LTspice,
+    /// ngspice, Xyce, ...).
+    ///
+    /// # Arguments
+    /// * `path` - Path to the output file
+    /// * `network` - The network that was fitted (for port info and z0)
+    /// * `model_name` - Name of the subcircuit (default: "s_equivalent")
+    /// * `create_reference_pins` - If true, create separate reference pins for each port
+    ///
+    /// # Returns
+    /// `Ok(())` on success, error message on failure
+    pub fn write_spice_subcircuit_s(
+        &self,
+        path: &std::path::Path,
+        network: &Network,
+        model_name: Option<&str>,
+        create_reference_pins: bool,
+    ) -> Result<(), String> {
+        let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
+        let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
+        let constant_coeff = self.constant_coeff.as_ref().ok_or("Model not fitted yet")?;
+        let proportional_coeff = self
+            .proportional_coeff
+            .as_ref()
+            .ok_or("Model not fitted yet")?;
+
+        let name = model_name.unwrap_or("s_equivalent");
+
+        super::spice::write_spice_subcircuit_s_to_file(
+            path,
+            poles,
+            residues,
+            constant_coeff,
+            proportional_coeff,
+            network.z0(),
+            network.nports(),
+            name,
+            create_reference_pins,
+        )
+        .map_err(|e| format!("Failed to write SPICE file: {}", e))
+    }
+
+    /// Generate SPICE subcircuit netlist as a string
+    ///
+    /// # Arguments
+    /// * `network` - The network that was fitted (for port info and z0)
+    /// * `model_name` - Name of the subcircuit (default: "s_equivalent")
+    /// * `create_reference_pins` - If true, create separate reference pins for each port
+    ///
+    /// # Returns
+    /// SPICE netlist as a String
+    pub fn generate_spice_subcircuit_s(
+        &self,
+        network: &Network,
+        model_name: Option<&str>,
+        create_reference_pins: bool,
+    ) -> Result<String, String> {
+        let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
+        let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
+        let constant_coeff = self.constant_coeff.as_ref().ok_or("Model not fitted yet")?;
+        let proportional_coeff = self
+            .proportional_coeff
+            .as_ref()
+            .ok_or("Model not fitted yet")?;
+
+        let name = model_name.unwrap_or("s_equivalent");
+
+        Ok(super::spice::generate_spice_subcircuit_s(
+            poles,
+            residues,
+            constant_coeff,
+            proportional_coeff,
+            network.z0(),
+            network.nports(),
+            name,
+            create_reference_pins,
+        ))
+    }
+
+    /// Perform passivity test on the fitted model
+    ///
+    /// Evaluates the passivity of the vector fitted model using the half-size test matrix method.
+    /// Returns frequency bands where passivity violations occur.
+    ///
+    /// # Arguments
+    /// * `nports` - Number of ports in the original network
+    ///
+    /// # Returns
+    /// `PassivityTestResult` containing violation bands and max singular value
+    pub fn passivity_test(
+        &self,
+        nports: usize,
+    ) -> Result<super::passivity::PassivityTestResult, String> {
+        let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
+        let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
+        let constant_coeff = self.constant_coeff.as_ref().ok_or("Model not fitted yet")?;
+        let proportional_coeff = self
+            .proportional_coeff
+            .as_ref()
+            .ok_or("Model not fitted yet")?;
+
+        super::passivity::passivity_test(
+            poles,
+            residues,
+            constant_coeff,
+            proportional_coeff,
+            nports,
+        )
+    }
+
+    /// Check if the fitted model is passive
+    ///
+    /// # Arguments
+    /// * `nports` - Number of ports in the original network
+    ///
+    /// # Returns
+    /// `true` if model is passive, `false` otherwise
+    pub fn is_passive(&self, nports: usize) -> Result<bool, String> {
+        let result = self.passivity_test(nports)?;
+        Ok(result.is_passive())
+    }
+
+    /// Get the state-space representation matrices (A, B, C, D, E)
+    ///
+    /// # Arguments
+    /// * `nports` - Number of ports in the original network
+    pub fn get_state_space_matrices(
+        &self,
+        nports: usize,
+    ) -> Result<super::passivity::StateSpaceMatrices, String> {
+        let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
+        let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
+        let constant_coeff = self.constant_coeff.as_ref().ok_or("Model not fitted yet")?;
+        let proportional_coeff = self
+            .proportional_coeff
+            .as_ref()
+            .ok_or("Model not fitted yet")?;
+
+        Ok(super::passivity::build_state_space_matrices(
+            poles,
+            residues,
+            constant_coeff,
+            proportional_coeff,
+            nports,
+        ))
+    }
+
+    /// Enforce passivity of the fitted model
+    ///
+    /// Uses iterative singular value perturbation to enforce passivity.
+    ///
+    /// # Arguments
+    /// * `nports` - Number of ports in the original network
+    /// * `f_max` - Maximum frequency of interest (Hz)
+    /// * `n_samples` - Number of frequency samples for evaluation (default: 200)
+    ///
+    /// # Returns
+    /// `Ok(())` on success, updating internal residues
+    pub fn passivity_enforce(
+        &mut self,
+        nports: usize,
+        f_max: f64,
+        n_samples: Option<usize>,
+    ) -> Result<super::passivity::PassivityEnforceResult, String> {
+        let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
+        let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
+        let constant_coeff = self.constant_coeff.as_ref().ok_or("Model not fitted yet")?;
+        let proportional_coeff = self
+            .proportional_coeff
+            .as_ref()
+            .ok_or("Model not fitted yet")?;
+
+        let samples = n_samples.unwrap_or(200);
+
+        let result = super::passivity::passivity_enforce(
+            poles,
+            residues,
+            constant_coeff,
+            proportional_coeff,
+            nports,
+            f_max,
+            samples,
+            self.max_iterations,
+        )?;
+
+        // Update residues with enforced values
+        self.residues = Some(result.residues.clone());
+
+        Ok(result)
+    }
 }
 
 #[cfg(test)]

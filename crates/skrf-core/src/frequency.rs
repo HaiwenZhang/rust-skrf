@@ -164,6 +164,16 @@ impl Frequency {
     pub fn sweep_type(&self) -> SweepType {
         self.sweep_type
     }
+
+    /// Get the frequency span in Hz
+    pub fn span(&self) -> f64 {
+        self.stop() - self.start()
+    }
+
+    /// Get the multiplier for the current unit
+    pub fn multiplier(&self) -> f64 {
+        self.unit.multiplier()
+    }
 }
 
 #[cfg(test)]

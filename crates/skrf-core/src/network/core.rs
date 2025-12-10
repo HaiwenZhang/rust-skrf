@@ -105,6 +105,85 @@ impl Network {
         })
     }
 
+    /// Create from Touchstone content string
+    ///
+    /// This is useful for WASM environments where file system access is not available.
+    ///
+    /// # Arguments
+    /// * `content` - Touchstone file content as string
+    /// * `nports` - Number of ports (typically derived from file extension, e.g., .s2p = 2 ports)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let content = std::fs::read_to_string("test.s2p")?;
+    /// let ntwk = Network::from_touchstone_content(&content, 2)?;
+    /// ```
+    pub fn from_touchstone_content(content: &str, nports: usize) -> Result<Self, TouchstoneError> {
+        let ts = Touchstone::from_str(content, nports)?;
+
+        let nfreq = ts.nfreq();
+        let n = ts.nports;
+
+        let mut s = Array3::<Complex64>::zeros((nfreq, n, n));
+        for f in 0..nfreq {
+            for i in 0..n {
+                for j in 0..n {
+                    s[[f, i, j]] = ts.s[f][i][j];
+                }
+            }
+        }
+
+        // Convert z0 vector to Array1<Complex64>
+        let z0 = Array1::from_vec(ts.z0.iter().map(|&x| Complex64::new(x, 0.0)).collect());
+
+        let s = match ts.param_type {
+            crate::touchstone::parser::ParameterType::S => s,
+            crate::touchstone::parser::ParameterType::Z => {
+                let z_vals = if ts.is_v2 {
+                    s
+                } else {
+                    let mut z_denorm = s.clone();
+                    for f in 0..nfreq {
+                        for i in 0..n {
+                            for j in 0..n {
+                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
+                                z_denorm[[f, i, j]] = z_denorm[[f, i, j]] * scaling;
+                            }
+                        }
+                    }
+                    z_denorm
+                };
+                z2s(&z_vals, &z0)
+            }
+            crate::touchstone::parser::ParameterType::Y => {
+                let y_vals = if ts.is_v2 {
+                    s
+                } else {
+                    let mut y_denorm = s.clone();
+                    for f in 0..nfreq {
+                        for i in 0..n {
+                            for j in 0..n {
+                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
+                                y_denorm[[f, i, j]] = y_denorm[[f, i, j]] / scaling;
+                            }
+                        }
+                    }
+                    y_denorm
+                };
+                y2s(&y_vals, &z0)
+            }
+            _ => s,
+        };
+
+        Ok(Self {
+            frequency: ts.frequency,
+            s,
+            z0,
+            name: None,
+            comments: ts.comments,
+        })
+    }
+
     /// Get the number of ports
     pub fn nports(&self) -> usize {
         self.s.shape()[1]

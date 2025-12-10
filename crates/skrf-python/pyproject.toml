@@ -1,0 +1,39 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "skrf_python"
+version = "0.1.0"
+description = "Python bindings for skrf-core - RF/microwave engineering in Rust"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "BSD-3-Clause"}
+authors = [
+    {name = "skrf-rust contributors"}
+]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=2.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "maturin>=1.4",
+]
+
+[tool.maturin]
+# Use ABI3 for stable Python ABI across versions
+features = ["pyo3/extension-module", "pyo3/abi3-py310"]
+module-name = "skrf_python"
+python-source = "python"

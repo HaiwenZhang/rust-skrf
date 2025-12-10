@@ -128,6 +128,24 @@ impl Touchstone {
         }
     }
 
+    /// Parse from string content
+    ///
+    /// This is useful for WASM environments where file system access is not available.
+    ///
+    /// # Arguments
+    /// * `content` - Touchstone file content as string
+    /// * `nports` - Number of ports (typically derived from file extension, e.g., .s2p = 2 ports)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let content = "# GHz S RI R 50\n1.0 0.1 0.0 0.9 0.0 0.9 0.0 0.1 0.0";
+    /// let ts = Touchstone::from_str(content, 2)?;
+    /// ```
+    pub fn from_str(content: &str, nports: usize) -> Result<Self, TouchstoneError> {
+        let cursor = std::io::Cursor::new(content);
+        Self::parse(cursor, nports)
+    }
+
     /// Parse from a reader
     fn parse<R: BufRead>(reader: R, nports_hint: usize) -> Result<Self, TouchstoneError> {
         let mut state = ParserState::new(nports_hint);

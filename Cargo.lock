@@ -377,6 +377,8 @@ dependencies = [
 name = "skrf-python"
 version = "0.1.0"
 dependencies = [
+ "ndarray",
+ "num-complex",
  "numpy",
  "pyo3",
  "skrf-core",
