@@ -9,6 +9,8 @@ description = "Core RF/Microwave engineering library - Rust implementation of sc
 num-complex.workspace = true
 ndarray.workspace = true
 thiserror.workspace = true
+rustfft.workspace = true
+nalgebra.workspace = true
 
 [dev-dependencies]
 approx.workspace = true

@@ -5,6 +5,8 @@
 use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
 
+use crate::constants::NEAR_ZERO;
+
 /// Convert S-parameters to Z-parameters
 ///
 /// Formula: Z = F * (I + S) * inv(I - S) * F
@@ -171,6 +173,384 @@ pub fn y2s(y: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     s
 }
 
+/// Convert S-parameters to T-parameters (scattering transfer parameters)
+///
+/// Only valid for 2-port networks.
+/// T = [[T11, T12], [T21, T22]] where:
+/// T11 = -(S11*S22 - S12*S21) / S21
+/// T12 = S11 / S21
+/// T21 = -S22 / S21
+/// T22 = 1 / S21
+pub fn s2t(s: &Array3<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = s.shape()[0];
+    let nports = s.shape()[1];
+
+    if nports != 2 {
+        return None; // T-params only defined for 2-port networks
+    }
+
+    let mut t = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let s11 = s[[f, 0, 0]];
+        let s12 = s[[f, 0, 1]];
+        let s21 = s[[f, 1, 0]];
+        let s22 = s[[f, 1, 1]];
+
+        if s21.norm() < NEAR_ZERO {
+            return None; // S21 must be non-zero
+        }
+
+        let inv_s21 = Complex64::new(1.0, 0.0) / s21;
+        let det_s = s11 * s22 - s12 * s21;
+
+        t[[f, 0, 0]] = -det_s * inv_s21;
+        t[[f, 0, 1]] = s11 * inv_s21;
+        t[[f, 1, 0]] = -s22 * inv_s21;
+        t[[f, 1, 1]] = inv_s21;
+    }
+
+    Some(t)
+}
+
+/// Convert T-parameters to S-parameters
+///
+/// Only valid for 2-port networks.
+/// S = [[S11, S12], [S21, S22]] where:
+/// S11 = T12 / T22
+/// S12 = (T11*T22 - T12*T21) / T22
+/// S21 = 1 / T22
+/// S22 = -T21 / T22
+pub fn t2s(t: &Array3<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = t.shape()[0];
+    let nports = t.shape()[1];
+
+    if nports != 2 {
+        return None;
+    }
+
+    let mut s = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let t11 = t[[f, 0, 0]];
+        let t12 = t[[f, 0, 1]];
+        let t21 = t[[f, 1, 0]];
+        let t22 = t[[f, 1, 1]];
+
+        if t22.norm() < NEAR_ZERO {
+            return None; // T22 must be non-zero
+        }
+
+        let inv_t22 = Complex64::new(1.0, 0.0) / t22;
+        let det_t = t11 * t22 - t12 * t21;
+
+        s[[f, 0, 0]] = t12 * inv_t22;
+        s[[f, 0, 1]] = det_t * inv_t22;
+        s[[f, 1, 0]] = inv_t22;
+        s[[f, 1, 1]] = -t21 * inv_t22;
+    }
+
+    Some(s)
+}
+
+/// Convert S-parameters to ABCD parameters (chain/cascade parameters)
+///
+/// Only valid for 2-port networks.
+/// ABCD matrix: [[A, B], [C, D]]
+///
+/// Formulas (for Z0 = z0_common):
+/// A = ((1 + S11) * (1 - S22) + S12 * S21) / (2 * S21)
+/// B = Z0 * ((1 + S11) * (1 + S22) - S12 * S21) / (2 * S21)
+/// C = (1/Z0) * ((1 - S11) * (1 - S22) - S12 * S21) / (2 * S21)
+/// D = ((1 - S11) * (1 + S22) + S12 * S21) / (2 * S21)
+pub fn s2a(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = s.shape()[0];
+    let nports = s.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut a = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let s11 = s[[f, 0, 0]];
+        let s12 = s[[f, 0, 1]];
+        let s21 = s[[f, 1, 0]];
+        let s22 = s[[f, 1, 1]];
+
+        if s21.norm() < NEAR_ZERO {
+            return None; // S21 must be non-zero for ABCD
+        }
+
+        // Use geometric mean of port impedances for ABCD
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let sqrt_z01 = z01.sqrt();
+        let sqrt_z02 = z02.sqrt();
+
+        let one = Complex64::new(1.0, 0.0);
+        let two = Complex64::new(2.0, 0.0);
+        let inv_2s21 = one / (two * s21);
+
+        // A = ((1+S11)(1-S22) + S12*S21) / (2*S21) * sqrt(z02/z01)
+        let a_val = ((one + s11) * (one - s22) + s12 * s21) * inv_2s21 * (sqrt_z02 / sqrt_z01);
+
+        // B = Z0 * ((1+S11)(1+S22) - S12*S21) / (2*S21) where Z0 = sqrt(z01*z02)
+        let z0_common = (z01 * z02).sqrt();
+        let b_val = z0_common * ((one + s11) * (one + s22) - s12 * s21) * inv_2s21;
+
+        // C = (1/Z0) * ((1-S11)(1-S22) - S12*S21) / (2*S21)
+        let c_val = ((one - s11) * (one - s22) - s12 * s21) * inv_2s21 / z0_common;
+
+        // D = ((1-S11)(1+S22) + S12*S21) / (2*S21) * sqrt(z01/z02)
+        let d_val = ((one - s11) * (one + s22) + s12 * s21) * inv_2s21 * (sqrt_z01 / sqrt_z02);
+
+        a[[f, 0, 0]] = a_val;
+        a[[f, 0, 1]] = b_val;
+        a[[f, 1, 0]] = c_val;
+        a[[f, 1, 1]] = d_val;
+    }
+
+    Some(a)
+}
+
+/// Convert ABCD parameters to S-parameters
+///
+/// Only valid for 2-port networks.
+/// Formulas (for Z0 = z0_common):
+/// S11 = (A + B/Z0 - C*Z0 - D) / (A + B/Z0 + C*Z0 + D)
+/// S12 = 2*(A*D - B*C) / (A + B/Z0 + C*Z0 + D)
+/// S21 = 2 / (A + B/Z0 + C*Z0 + D)
+/// S22 = (-A + B/Z0 - C*Z0 + D) / (A + B/Z0 + C*Z0 + D)
+pub fn a2s(abcd: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = abcd.shape()[0];
+    let nports = abcd.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut s = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let a = abcd[[f, 0, 0]];
+        let b = abcd[[f, 0, 1]];
+        let c = abcd[[f, 1, 0]];
+        let d = abcd[[f, 1, 1]];
+
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let sqrt_z01 = z01.sqrt();
+        let sqrt_z02 = z02.sqrt();
+
+        // Adjust for port impedances
+        let a_adj = a * sqrt_z01 / sqrt_z02;
+        let d_adj = d * sqrt_z02 / sqrt_z01;
+        let z0_common = (z01 * z02).sqrt();
+        let b_adj = b / z0_common;
+        let c_adj = c * z0_common;
+
+        let two = Complex64::new(2.0, 0.0);
+        let denom = a_adj + b_adj + c_adj + d_adj;
+
+        if denom.norm() < NEAR_ZERO {
+            return None;
+        }
+
+        s[[f, 0, 0]] = (a_adj + b_adj - c_adj - d_adj) / denom;
+        s[[f, 0, 1]] = two * (a_adj * d_adj - b_adj * c_adj) / denom;
+        s[[f, 1, 0]] = two / denom;
+        s[[f, 1, 1]] = (-a_adj + b_adj - c_adj + d_adj) / denom;
+    }
+
+    Some(s)
+}
+
+/// Convert S-parameters to H-parameters (hybrid parameters)
+///
+/// Only valid for 2-port networks.
+/// H-matrix: [[h11, h12], [h21, h22]]
+/// where h11 is impedance, h12 is voltage ratio, h21 is current ratio, h22 is admittance
+pub fn s2h(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = s.shape()[0];
+    let nports = s.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut h = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let s11 = s[[f, 0, 0]];
+        let s12 = s[[f, 0, 1]];
+        let s21 = s[[f, 1, 0]];
+        let s22 = s[[f, 1, 1]];
+
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let one = Complex64::new(1.0, 0.0);
+        let two = Complex64::new(2.0, 0.0);
+
+        // Denominator: (1-S11)(1+S22) + S12*S21
+        let denom = (one - s11) * (one + s22) + s12 * s21;
+        if denom.norm() < NEAR_ZERO {
+            return None;
+        }
+
+        // h11 = z01 * ((1+S11)(1+S22) - S12*S21) / denom
+        h[[f, 0, 0]] = z01 * ((one + s11) * (one + s22) - s12 * s21) / denom;
+
+        // h12 = 2*S12 / denom
+        h[[f, 0, 1]] = two * s12 / denom;
+
+        // h21 = -2*S21 / denom
+        h[[f, 1, 0]] = -two * s21 / denom;
+
+        // h22 = (1/z02) * ((1-S11)(1-S22) - S12*S21) / denom
+        h[[f, 1, 1]] = ((one - s11) * (one - s22) - s12 * s21) / (z02 * denom);
+    }
+
+    Some(h)
+}
+
+/// Convert H-parameters to S-parameters
+pub fn h2s(h: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = h.shape()[0];
+    let nports = h.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut s = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let h11 = h[[f, 0, 0]];
+        let h12 = h[[f, 0, 1]];
+        let h21 = h[[f, 1, 0]];
+        let h22 = h[[f, 1, 1]];
+
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let one = Complex64::new(1.0, 0.0);
+        let two = Complex64::new(2.0, 0.0);
+
+        // Denominator: (h11 + z01)(1 + h22*z02) - h12*h21*z02
+        let denom = (h11 + z01) * (one + h22 * z02) - h12 * h21 * z02;
+        if denom.norm() < NEAR_ZERO {
+            return None;
+        }
+
+        // S11 = ((h11 - z01)(1 + h22*z02) - h12*h21*z02) / denom
+        s[[f, 0, 0]] = ((h11 - z01) * (one + h22 * z02) - h12 * h21 * z02) / denom;
+
+        // S12 = 2*h12*z02 / denom
+        s[[f, 0, 1]] = two * h12 * z02 / denom;
+
+        // S21 = -2*h21 / denom
+        s[[f, 1, 0]] = -two * h21 / denom;
+
+        // S22 = ((h11 + z01)(h22*z02 - 1) + h12*h21*z02) / denom
+        s[[f, 1, 1]] = ((h11 + z01) * (h22 * z02 - one) + h12 * h21 * z02) / denom;
+    }
+
+    Some(s)
+}
+
+/// Convert S-parameters to G-parameters (inverse hybrid parameters)
+///
+/// Only valid for 2-port networks.
+/// G-matrix: [[g11, g12], [g21, g22]]
+/// where g11 is admittance, g12 is current ratio, g21 is voltage ratio, g22 is impedance
+pub fn s2g(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = s.shape()[0];
+    let nports = s.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut g = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let s11 = s[[f, 0, 0]];
+        let s12 = s[[f, 0, 1]];
+        let s21 = s[[f, 1, 0]];
+        let s22 = s[[f, 1, 1]];
+
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let one = Complex64::new(1.0, 0.0);
+        let two = Complex64::new(2.0, 0.0);
+
+        // Denominator: (1+S11)(1-S22) + S12*S21
+        let denom = (one + s11) * (one - s22) + s12 * s21;
+        if denom.norm() < NEAR_ZERO {
+            return None;
+        }
+
+        // g11 = (1/z01) * ((1-S11)(1-S22) - S12*S21) / denom
+        g[[f, 0, 0]] = ((one - s11) * (one - s22) - s12 * s21) / (z01 * denom);
+
+        // g12 = -2*S12 / denom
+        g[[f, 0, 1]] = -two * s12 / denom;
+
+        // g21 = 2*S21 / denom
+        g[[f, 1, 0]] = two * s21 / denom;
+
+        // g22 = z02 * ((1+S11)(1+S22) - S12*S21) / denom
+        g[[f, 1, 1]] = z02 * ((one + s11) * (one + s22) - s12 * s21) / denom;
+    }
+
+    Some(g)
+}
+
+/// Convert G-parameters to S-parameters
+pub fn g2s(g: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Complex64>> {
+    let nfreq = g.shape()[0];
+    let nports = g.shape()[1];
+
+    if nports != 2 || z0.len() != 2 {
+        return None;
+    }
+
+    let mut s = Array3::<Complex64>::zeros((nfreq, 2, 2));
+
+    for f in 0..nfreq {
+        let g11 = g[[f, 0, 0]];
+        let g12 = g[[f, 0, 1]];
+        let g21 = g[[f, 1, 0]];
+        let g22 = g[[f, 1, 1]];
+
+        let z01 = z0[0];
+        let z02 = z0[1];
+        let one = Complex64::new(1.0, 0.0);
+        let two = Complex64::new(2.0, 0.0);
+
+        // Denominator: (1 + g11*z01)(g22 + z02) - g12*g21*z01
+        let denom = (one + g11 * z01) * (g22 + z02) - g12 * g21 * z01;
+        if denom.norm() < NEAR_ZERO {
+            return None;
+        }
+
+        // S11 = ((g11*z01 - 1)(g22 + z02) + g12*g21*z01) / denom
+        s[[f, 0, 0]] = ((g11 * z01 - one) * (g22 + z02) + g12 * g21 * z01) / denom;
+
+        // S12 = -2*g12*z01 / denom
+        s[[f, 0, 1]] = -two * g12 * z01 / denom;
+
+        // S21 = 2*g21 / denom
+        s[[f, 1, 0]] = two * g21 / denom;
+
+        // S22 = ((1 + g11*z01)(g22 - z02) - g12*g21*z01) / denom
+        s[[f, 1, 1]] = ((one + g11 * z01) * (g22 - z02) - g12 * g21 * z01) / denom;
+    }
+
+    Some(s)
+}
+
 /// Simple 2x2 matrix inversion for complex matrices
 fn invert_matrix(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
     let n = m.shape()[0];
@@ -180,7 +560,7 @@ fn invert_matrix(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
 
     if n == 1 {
         let det = m[[0, 0]];
-        if det.norm() < 1e-15 {
+        if det.norm() < NEAR_ZERO {
             return None;
         }
         return Some(Array2::from_elem((1, 1), Complex64::new(1.0, 0.0) / det));
@@ -193,7 +573,7 @@ fn invert_matrix(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
         let d = m[[1, 1]];
         let det = a * d - b * c;
 
-        if det.norm() < 1e-15 {
+        if det.norm() < NEAR_ZERO {
             return None;
         }
 
@@ -233,7 +613,7 @@ fn invert_matrix_gauss(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
             }
         }
 
-        if pivot_val < 1e-15 {
+        if pivot_val < NEAR_ZERO {
             return None; // Singular
         }
 

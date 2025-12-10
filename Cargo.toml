@@ -18,6 +18,8 @@ repository = "https://github.com/scikit-rf/skrf-rust"
 num-complex = "0.4"
 ndarray = "0.16"
 thiserror = "2.0"
+rustfft = "6.2"
+nalgebra = "0.33"
 
 # Python bindings
 pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310"] }
