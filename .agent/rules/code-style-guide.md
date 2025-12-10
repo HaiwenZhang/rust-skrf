@@ -31,12 +31,11 @@ trigger: always_on
 - 复杂性是万恶之源
 - 代码命名要见名知义，而不是胡乱命名，代码首先是给人读的，其次才是让机器执行的。
 
-## MCP Server
+## 工具
 
-请使用以下 MCP Server：
-
-- Sequential Thinking
-- serena
+### 文档工具
+- 思考和分析：
+  - 在需求分析时，使用`sequential-thinking`评估复杂需求的技术可行性
 
 ## 沟通原则
 
