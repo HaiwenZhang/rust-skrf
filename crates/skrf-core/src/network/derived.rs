@@ -4,7 +4,6 @@
 //! VSWR, passivity, reciprocity, and group delay.
 
 use ndarray::Array3;
-use num_complex::Complex64;
 
 use super::core::Network;
 use crate::constants::NEAR_ZERO;
@@ -61,20 +60,17 @@ impl Network {
         let mut result = Array3::<f64>::zeros((nfreq, nports, nports));
 
         for f in 0..nfreq {
-            // Compute S^H * S
+            let s_f = self.s.slice(ndarray::s![f, .., ..]);
+            // S^H = conj(transpose(S))
+            let s_h = s_f.mapv(|c| c.conj()).reversed_axes();
+            // S^H * S
+            let shs = s_h.dot(&s_f);
+
+            // I - S^H * S (extract real part)
             for i in 0..nports {
                 for j in 0..nports {
-                    let mut sum = Complex64::new(0.0, 0.0);
-                    for k in 0..nports {
-                        // S^H[i,k] = conj(S[k,i])
-                        sum += self.s[[f, k, i]].conj() * self.s[[f, k, j]];
-                    }
-                    // I - S^H * S diagonal: 1 - sum for i==j, -sum otherwise
-                    if i == j {
-                        result[[f, i, j]] = 1.0 - sum.re;
-                    } else {
-                        result[[f, i, j]] = -sum.re;
-                    }
+                    let identity_ij = if i == j { 1.0 } else { 0.0 };
+                    result[[f, i, j]] = identity_ij - shs[[i, j]].re;
                 }
             }
         }
@@ -264,6 +260,7 @@ mod tests {
     use crate::frequency::{Frequency, FrequencyUnit, SweepType};
     use approx::assert_relative_eq;
     use ndarray::Array1;
+    use num_complex::Complex64;
 
     #[test]
     fn test_s_db() {

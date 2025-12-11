@@ -217,14 +217,12 @@ fn interpolate_complex(
         return s[[n - 1, i, j]] + slope * Complex64::new(f_new - f_old[n - 1], 0.0);
     }
 
-    // Find interval
-    let mut idx = 0;
-    for k in 0..n - 1 {
-        if f_new >= f_old[k] && f_new <= f_old[k + 1] {
-            idx = k;
-            break;
-        }
-    }
+    // Binary search for interval (O(log n) instead of O(n))
+    let idx = match f_old.partition_point(|&f| f < f_new) {
+        0 => 0,
+        i if i >= n => n - 2,
+        i => i - 1,
+    };
 
     // Linear interpolation
     let t = (f_new - f_old[idx]) / (f_old[idx + 1] - f_old[idx]);

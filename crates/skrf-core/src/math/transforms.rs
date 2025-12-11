@@ -524,107 +524,36 @@ pub fn g2s(g: &Array3<Complex64>, z0: &Array1<Complex64>) -> Option<Array3<Compl
     Some(s)
 }
 
-/// Simple 2x2 matrix inversion for complex matrices
+/// Matrix inversion using nalgebra's optimized LU decomposition
+///
+/// Uses nalgebra's try_inverse() which provides numerically stable
+/// LU-based matrix inversion with partial pivoting.
 fn invert_matrix(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
+    use nalgebra::{Complex, DMatrix};
+
     let n = m.shape()[0];
     if n != m.shape()[1] {
         return None;
     }
 
-    if n == 1 {
-        let det = m[[0, 0]];
-        if det.norm() < NEAR_ZERO {
-            return None;
-        }
-        return Some(Array2::from_elem((1, 1), Complex64::new(1.0, 0.0) / det));
+    if n == 0 {
+        return Some(Array2::<Complex64>::zeros((0, 0)));
     }
 
-    if n == 2 {
-        let a = m[[0, 0]];
-        let b = m[[0, 1]];
-        let c = m[[1, 0]];
-        let d = m[[1, 1]];
-        let det = a * d - b * c;
+    // Convert ndarray to nalgebra DMatrix
+    let na_mat = DMatrix::from_fn(n, n, |i, j| Complex::new(m[[i, j]].re, m[[i, j]].im));
 
-        if det.norm() < NEAR_ZERO {
-            return None;
-        }
+    // Use nalgebra's optimized LU-based inversion
+    let inv = na_mat.try_inverse()?;
 
-        let inv_det = Complex64::new(1.0, 0.0) / det;
-        let mut result = Array2::<Complex64>::zeros((2, 2));
-        result[[0, 0]] = d * inv_det;
-        result[[0, 1]] = -b * inv_det;
-        result[[1, 0]] = -c * inv_det;
-        result[[1, 1]] = a * inv_det;
-        return Some(result);
-    }
-
-    // For larger matrices (up to 4 used in tests), we need implementation.
-    // Implementing Gauss-Jordan elimination for small N.
-    if n <= 10 {
-        return invert_matrix_gauss(m);
-    }
-
-    // Logic for large N missing
-    None
-}
-
-/// Gauss-Jordan elimination for matrix inversion
-fn invert_matrix_gauss(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
-    let n = m.shape()[0];
-    let mut a = m.clone();
-    let mut inv = Array2::<Complex64>::eye(n);
-
+    // Convert back to ndarray
+    let mut result = Array2::<Complex64>::zeros((n, n));
     for i in 0..n {
-        // Find pivot
-        let mut pivot_idx = i;
-        let mut pivot_val = a[[i, i]].norm();
-        for k in i + 1..n {
-            if a[[k, i]].norm() > pivot_val {
-                pivot_idx = k;
-                pivot_val = a[[k, i]].norm();
-            }
-        }
-
-        if pivot_val < NEAR_ZERO {
-            return None; // Singular
-        }
-
-        // Swap rows
-        if pivot_idx != i {
-            for j in 0..n {
-                let tmp = a[[i, j]];
-                a[[i, j]] = a[[pivot_idx, j]];
-                a[[pivot_idx, j]] = tmp;
-                let tmp = inv[[i, j]];
-                inv[[i, j]] = inv[[pivot_idx, j]];
-                inv[[pivot_idx, j]] = tmp;
-            }
-        }
-
-        // Scale row
-        let scale = a[[i, i]];
         for j in 0..n {
-            a[[i, j]] = a[[i, j]] / scale;
-            inv[[i, j]] = inv[[i, j]] / scale;
-        }
-
-        // Eliminate other rows
-        for k in 0..n {
-            if k != i {
-                let factor = a[[k, i]];
-                for j in 0..n {
-                    let val_a = a[[i, j]];
-                    a[[k, j]] = a[[k, j]] - factor * val_a;
-
-                    let val_inv = inv[[i, j]];
-                    inv[[k, j]] = inv[[k, j]] - factor * val_inv;
-                }
-            }
+            result[[i, j]] = Complex64::new(inv[(i, j)].re, inv[(i, j)].im);
         }
     }
-
-    Some(inv)
+    Some(result)
 }
 
 #[cfg(test)]

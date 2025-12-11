@@ -177,6 +177,8 @@ fn blackman_window(n: usize) -> Vec<f64> {
 }
 
 /// IFFT using rustfft library (O(n log n) implementation)
+///
+/// Note: rustfft 6.x uses num_complex::Complex directly, so no type conversion needed.
 fn ifft(data: &[Complex64]) -> Vec<Complex64> {
     use rustfft::FftPlanner;
 
@@ -185,23 +187,20 @@ fn ifft(data: &[Complex64]) -> Vec<Complex64> {
         return vec![];
     }
 
-    // Convert to rustfft's Complex type
-    let mut buffer: Vec<rustfft::num_complex::Complex<f64>> = data
-        .iter()
-        .map(|c| rustfft::num_complex::Complex::new(c.re, c.im))
-        .collect();
+    // rustfft 6.x uses the same Complex64 type as num_complex - no conversion needed
+    let mut buffer: Vec<Complex64> = data.to_vec();
 
     // Create IFFT planner and perform IFFT
     let mut planner = FftPlanner::new();
-    let ifft = planner.plan_fft_inverse(n);
-    ifft.process(&mut buffer);
+    let ifft_plan = planner.plan_fft_inverse(n);
+    ifft_plan.process(&mut buffer);
 
-    // Convert back to num_complex::Complex64 and normalize
+    // Normalize in-place (more efficient than creating new vec)
     let scale = 1.0 / n as f64;
+    for c in buffer.iter_mut() {
+        *c *= scale;
+    }
     buffer
-        .iter()
-        .map(|c| Complex64::new(c.re * scale, c.im * scale))
-        .collect()
 }
 
 #[cfg(test)]
