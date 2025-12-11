@@ -125,6 +125,7 @@ impl Frequency {
     }
 
     /// Get frequency vector in Hz
+    #[inline]
     pub fn f(&self) -> &[f64] {
         &self.f
     }
@@ -136,16 +137,19 @@ impl Frequency {
     }
 
     /// Get the number of frequency points
+    #[inline]
     pub fn npoints(&self) -> usize {
         self.f.len()
     }
 
     /// Get the start frequency in Hz
+    #[inline]
     pub fn start(&self) -> f64 {
         *self.f.first().unwrap_or(&0.0)
     }
 
     /// Get the stop frequency in Hz
+    #[inline]
     pub fn stop(&self) -> f64 {
         *self.f.last().unwrap_or(&0.0)
     }
@@ -156,16 +160,19 @@ impl Frequency {
     }
 
     /// Get the current unit
+    #[inline]
     pub fn unit(&self) -> FrequencyUnit {
         self.unit
     }
 
     /// Get the sweep type
+    #[inline]
     pub fn sweep_type(&self) -> SweepType {
         self.sweep_type
     }
 
     /// Get the frequency span in Hz
+    #[inline]
     pub fn span(&self) -> f64 {
         self.stop() - self.start()
     }

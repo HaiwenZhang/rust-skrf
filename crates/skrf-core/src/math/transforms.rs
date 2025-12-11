@@ -6,6 +6,7 @@ use ndarray::{Array1, Array2, Array3};
 use num_complex::Complex64;
 
 use crate::constants::NEAR_ZERO;
+use crate::math::matrix_ops::{inv_sqrt_z0_matrix, sqrt_z0_matrix, z0_diag_matrix};
 
 /// Convert S-parameters to Z-parameters
 ///
@@ -20,14 +21,7 @@ pub fn s2z(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
 
     let mut z = Array3::<Complex64>::zeros((nfreq, nports, nports));
     let identity = Array2::<Complex64>::eye(nports);
-
-    // Create F matrix (diagonal sqrt(z0))
-    // We create it per frequency if needed (not here) or once
-    let sqrt_z0 = z0.mapv(|x| x.sqrt());
-    let mut f_mat = Array2::<Complex64>::zeros((nports, nports));
-    for i in 0..nports {
-        f_mat[[i, i]] = sqrt_z0[i];
-    }
+    let f_mat = sqrt_z0_matrix(z0);
 
     for f in 0..nfreq {
         let s_f = s.slice(ndarray::s![f, .., ..]);
@@ -47,30 +41,18 @@ pub fn s2z(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
 
 /// Convert Z-parameters to S-parameters
 ///
-/// Formula: S = inv(F) * (Z - Zref) * inv(Z + Zref) * F ?
-/// Actually generalized: S = F^-1 (Z - G) (Z + G)^-1 F
-/// where G is diagonal z0.
-/// Simplified: S = inv(Z/z0 + I) * (Z/z0 - I) ??? No.
-/// Skrf uses: S = F^-1 (Z - Z0_diag) (Z + Z0_diag)^-1 F
+/// Formula: S = F^-1 * (Z - Z0_diag) * inv(Z + Z0_diag) * F
+/// where F is diagonal matrix of sqrt(z0)
 pub fn z2s(z: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     let nfreq = z.shape()[0];
     let nports = z.shape()[1];
     assert_eq!(nports, z0.len());
 
     let mut s = Array3::<Complex64>::zeros((nfreq, nports, nports));
-    let _identity = Array2::<Complex64>::eye(nports);
 
-    // F matrix
-    let sqrt_z0 = z0.mapv(|x| x.sqrt());
-    let mut f_mat = Array2::<Complex64>::zeros((nports, nports));
-    let mut inv_f_mat = Array2::<Complex64>::zeros((nports, nports));
-    let mut z0_diag = Array2::<Complex64>::zeros((nports, nports));
-
-    for i in 0..nports {
-        f_mat[[i, i]] = sqrt_z0[i];
-        inv_f_mat[[i, i]] = Complex64::new(1.0, 0.0) / sqrt_z0[i];
-        z0_diag[[i, i]] = z0[i];
-    }
+    let f_mat = sqrt_z0_matrix(z0);
+    let inv_f_mat = inv_sqrt_z0_matrix(z0);
+    let z0_diag = z0_diag_matrix(z0);
 
     for f in 0..nfreq {
         let z_f = z.slice(ndarray::s![f, .., ..]);
@@ -104,10 +86,7 @@ pub fn s2y(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     let identity = Array2::<Complex64>::eye(nports);
 
     // G matrix (1/sqrt(z0))
-    let mut g_mat = Array2::<Complex64>::zeros((nports, nports));
-    for i in 0..nports {
-        g_mat[[i, i]] = Complex64::new(1.0, 0.0) / z0[i].sqrt();
-    }
+    let g_mat = inv_sqrt_z0_matrix(z0);
 
     for f in 0..nfreq {
         let s_f = s.slice(ndarray::s![f, .., ..]);
@@ -147,13 +126,7 @@ pub fn y2s(y: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     let identity = Array2::<Complex64>::eye(nports);
 
     // F matrix (sqrt(z0))
-    let mut f_mat = Array2::<Complex64>::zeros((nports, nports));
-    let mut inv_f_mat = Array2::<Complex64>::zeros((nports, nports));
-    for i in 0..nports {
-        let v = z0[i].sqrt();
-        f_mat[[i, i]] = v;
-        inv_f_mat[[i, i]] = Complex64::new(1.0, 0.0) / v;
-    }
+    let f_mat = sqrt_z0_matrix(z0);
 
     for f in 0..nfreq {
         let y_f = y.slice(ndarray::s![f, .., ..]);

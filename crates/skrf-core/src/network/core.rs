@@ -39,70 +39,7 @@ impl Network {
     /// Create from a Touchstone file
     pub fn from_touchstone(path: &str) -> Result<Self, TouchstoneError> {
         let ts = Touchstone::from_file(path)?;
-
-        let nfreq = ts.nfreq();
-        let nports = ts.nports;
-
-        let mut s = Array3::<Complex64>::zeros((nfreq, nports, nports));
-        for f in 0..nfreq {
-            for i in 0..nports {
-                for j in 0..nports {
-                    s[[f, i, j]] = ts.s[f][i][j];
-                }
-            }
-        }
-
-        // Convert z0 vector to Array1<Complex64>
-        let z0 = Array1::from_vec(ts.z0.iter().map(|&x| Complex64::new(x, 0.0)).collect());
-
-        let s = match ts.param_type {
-            crate::touchstone::parser::ParameterType::S => s,
-            crate::touchstone::parser::ParameterType::Z => {
-                let z_vals = if ts.is_v2 {
-                    s
-                } else {
-                    // V1 Z-params are normalized. Denormalize: Z_ohm = Z_norm * sqrt(Z0_i * Z0_j)
-                    let mut z_denorm = s.clone();
-                    for f in 0..nfreq {
-                        for i in 0..nports {
-                            for j in 0..nports {
-                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
-                                z_denorm[[f, i, j]] = z_denorm[[f, i, j]] * scaling;
-                            }
-                        }
-                    }
-                    z_denorm
-                };
-                z2s(&z_vals, &z0)
-            }
-            crate::touchstone::parser::ParameterType::Y => {
-                let y_vals = if ts.is_v2 {
-                    s
-                } else {
-                    // V1 Y-params are normalized to Y0 = 1/Z0
-                    let mut y_denorm = s.clone();
-                    for f in 0..nfreq {
-                        for i in 0..nports {
-                            for j in 0..nports {
-                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
-                                y_denorm[[f, i, j]] = y_denorm[[f, i, j]] / scaling;
-                            }
-                        }
-                    }
-                    y_denorm
-                };
-                y2s(&y_vals, &z0)
-            }
-            _ => s, // TODO: Implement G2S and H2S
-        };
-
-        Ok(Self {
-            frequency: ts.frequency,
-            s,
-            z0,
-            name: None,
-            comments: ts.comments,
-        })
+        Ok(Self::from_touchstone_data(ts))
     }
 
     /// Create from Touchstone content string
@@ -120,14 +57,21 @@ impl Network {
     /// ```
     pub fn from_touchstone_content(content: &str, nports: usize) -> Result<Self, TouchstoneError> {
         let ts = Touchstone::from_str(content, nports)?;
+        Ok(Self::from_touchstone_data(ts))
+    }
 
+    /// Internal: Convert Touchstone data to Network
+    ///
+    /// Shared logic for both file and string-based construction.
+    fn from_touchstone_data(ts: Touchstone) -> Self {
         let nfreq = ts.nfreq();
-        let n = ts.nports;
+        let nports = ts.nports;
 
-        let mut s = Array3::<Complex64>::zeros((nfreq, n, n));
+        // Convert Vec<Vec<Vec<Complex64>>> to Array3<Complex64>
+        let mut s = Array3::<Complex64>::zeros((nfreq, nports, nports));
         for f in 0..nfreq {
-            for i in 0..n {
-                for j in 0..n {
+            for i in 0..nports {
+                for j in 0..nports {
                     s[[f, i, j]] = ts.s[f][i][j];
                 }
             }
@@ -136,60 +80,80 @@ impl Network {
         // Convert z0 vector to Array1<Complex64>
         let z0 = Array1::from_vec(ts.z0.iter().map(|&x| Complex64::new(x, 0.0)).collect());
 
-        let s = match ts.param_type {
-            crate::touchstone::parser::ParameterType::S => s,
-            crate::touchstone::parser::ParameterType::Z => {
-                let z_vals = if ts.is_v2 {
-                    s
-                } else {
-                    let mut z_denorm = s.clone();
-                    for f in 0..nfreq {
-                        for i in 0..n {
-                            for j in 0..n {
-                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
-                                z_denorm[[f, i, j]] = z_denorm[[f, i, j]] * scaling;
-                            }
-                        }
-                    }
-                    z_denorm
-                };
-                z2s(&z_vals, &z0)
-            }
-            crate::touchstone::parser::ParameterType::Y => {
-                let y_vals = if ts.is_v2 {
-                    s
-                } else {
-                    let mut y_denorm = s.clone();
-                    for f in 0..nfreq {
-                        for i in 0..n {
-                            for j in 0..n {
-                                let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
-                                y_denorm[[f, i, j]] = y_denorm[[f, i, j]] / scaling;
-                            }
-                        }
-                    }
-                    y_denorm
-                };
-                y2s(&y_vals, &z0)
-            }
-            _ => s,
-        };
+        // Apply parameter type conversion and V1 denormalization
+        let s = Self::convert_params_to_s(s, &ts, &z0);
 
-        Ok(Self {
+        Self {
             frequency: ts.frequency,
             s,
             z0,
             name: None,
             comments: ts.comments,
-        })
+        }
+    }
+
+    /// Internal: Convert parameters to S-parameters with V1 denormalization
+    fn convert_params_to_s(
+        params: Array3<Complex64>,
+        ts: &Touchstone,
+        z0: &Array1<Complex64>,
+    ) -> Array3<Complex64> {
+        use crate::touchstone::parser::ParameterType;
+
+        match ts.param_type {
+            ParameterType::S => params,
+            ParameterType::Z => {
+                let z_vals = Self::denormalize_v1_params(&params, ts, true);
+                z2s(&z_vals, z0)
+            }
+            ParameterType::Y => {
+                let y_vals = Self::denormalize_v1_params(&params, ts, false);
+                y2s(&y_vals, z0)
+            }
+            _ => params, // G and H: pass through (TODO: implement g2s, h2s)
+        }
+    }
+
+    /// Internal: Denormalize V1 parameters (Z or Y)
+    ///
+    /// For Z-params: multiply by sqrt(Z0_i * Z0_j)
+    /// For Y-params: divide by sqrt(Z0_i * Z0_j)
+    fn denormalize_v1_params(
+        params: &Array3<Complex64>,
+        ts: &Touchstone,
+        is_z_params: bool,
+    ) -> Array3<Complex64> {
+        if ts.is_v2 {
+            return params.clone(); // V2 params are not normalized
+        }
+
+        let nfreq = params.shape()[0];
+        let nports = params.shape()[1];
+        let mut result = params.clone();
+
+        for f in 0..nfreq {
+            for i in 0..nports {
+                for j in 0..nports {
+                    let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
+                    if is_z_params {
+                        result[[f, i, j]] = result[[f, i, j]] * scaling;
+                    } else {
+                        result[[f, i, j]] = result[[f, i, j]] / scaling;
+                    }
+                }
+            }
+        }
+        result
     }
 
     /// Get the number of ports
+    #[inline]
     pub fn nports(&self) -> usize {
         self.s.shape()[1]
     }
 
     /// Get the number of frequency points
+    #[inline]
     pub fn nfreq(&self) -> usize {
         self.s.shape()[0]
     }

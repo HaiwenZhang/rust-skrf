@@ -11,21 +11,25 @@ use crate::constants::NEAR_ZERO;
 
 impl Network {
     /// Get S-parameter magnitude in dB
+    #[inline]
     pub fn s_db(&self) -> Array3<f64> {
         self.s.mapv(|c| 20.0 * c.norm().log10())
     }
 
     /// Get S-parameter magnitude (linear)
+    #[inline]
     pub fn s_mag(&self) -> Array3<f64> {
         self.s.mapv(|c| c.norm())
     }
 
     /// Get S-parameter phase in degrees
+    #[inline]
     pub fn s_deg(&self) -> Array3<f64> {
         self.s.mapv(|c| c.arg() * 180.0 / std::f64::consts::PI)
     }
 
     /// Get S-parameter phase in radians
+    #[inline]
     pub fn s_rad(&self) -> Array3<f64> {
         self.s.mapv(|c| c.arg())
     }

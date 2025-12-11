@@ -2,6 +2,7 @@
 //!
 //! Provides network operations like cascade, deembed, flip, renumber, etc.
 
+use anyhow::{bail, Result};
 use ndarray::{Array1, Array3};
 use num_complex::Complex64;
 
@@ -13,14 +14,25 @@ impl Network {
     /// Cascade with another network (self ** other)
     ///
     /// Only valid for 2-port networks. Connects port 2 of self to port 1 of other.
-    pub fn cascade(&self, other: &Network) -> Option<Network> {
-        if self.nports() != 2 || other.nports() != 2 {
-            return None;
+    pub fn cascade(&self, other: &Network) -> Result<Network> {
+        if self.nports() != 2 {
+            bail!(
+                "cascade requires 2-port network, self has {} ports",
+                self.nports()
+            );
         }
-
-        // Check frequency compatibility
+        if other.nports() != 2 {
+            bail!(
+                "cascade requires 2-port network, other has {} ports",
+                other.nports()
+            );
+        }
         if self.nfreq() != other.nfreq() {
-            return None;
+            bail!(
+                "frequency count mismatch: {} vs {}",
+                self.nfreq(),
+                other.nfreq()
+            );
         }
 
         let nfreq = self.nfreq();
@@ -46,7 +58,7 @@ impl Network {
             s_result[[f, 1, 1]] = s_b[1][1] + (s_b[0][1] * s_b[1][0] * s_a[1][1]) / denom;
         }
 
-        Some(Network::new(
+        Ok(Network::new(
             self.frequency.clone(),
             s_result,
             self.z0.clone(),
@@ -56,9 +68,9 @@ impl Network {
     /// Flip the ports of a 2-port network (swap port 1 and port 2)
     ///
     /// Returns a new Network with ports swapped.
-    pub fn flipped(&self) -> Option<Network> {
+    pub fn flipped(&self) -> Result<Network> {
         if self.nports() != 2 {
-            return None;
+            bail!("flip requires 2-port network, got {} ports", self.nports());
         }
 
         let nfreq = self.nfreq();
@@ -75,20 +87,21 @@ impl Network {
         // Also flip z0
         let z0_flipped = Array1::from_vec(vec![self.z0[1], self.z0[0]]);
 
-        Some(Network::new(self.frequency.clone(), s_flipped, z0_flipped))
+        Ok(Network::new(self.frequency.clone(), s_flipped, z0_flipped))
     }
 
     /// Get inverse S-parameters for de-embedding
     ///
     /// The inverse is defined such that cascade(self, inv(self)) = identity.
     /// Uses T-parameters: T_inv = T^-1, then convert back to S.
-    pub fn inv(&self) -> Option<Network> {
+    pub fn inv(&self) -> Result<Network> {
         if self.nports() != 2 {
-            return None;
+            bail!("inv requires 2-port network, got {} ports", self.nports());
         }
 
         // Convert to T-parameters
-        let t = s2t(&self.s)?;
+        let t = s2t(&self.s)
+            .ok_or_else(|| anyhow::anyhow!("S21 near zero, cannot convert to T-params"))?;
         let nfreq = self.nfreq();
         let mut t_inv = Array3::<Complex64>::zeros((nfreq, 2, 2));
 
@@ -101,7 +114,7 @@ impl Network {
 
             let det = t11 * t22 - t12 * t21;
             if det.norm() < NEAR_ZERO {
-                return None;
+                bail!("singular T-matrix at frequency index {}", f);
             }
 
             let inv_det = Complex64::new(1.0, 0.0) / det;
@@ -112,16 +125,17 @@ impl Network {
         }
 
         // Convert back to S-parameters
-        let s_inv = t2s(&t_inv)?;
+        let s_inv = t2s(&t_inv)
+            .ok_or_else(|| anyhow::anyhow!("T22 near zero, cannot convert back to S-params"))?;
 
-        Some(Network::new(self.frequency.clone(), s_inv, self.z0.clone()))
+        Ok(Network::new(self.frequency.clone(), s_inv, self.z0.clone()))
     }
 
     /// De-embed another network from this one
     ///
     /// Effectively: self // other = inv(other) ** self ** inv(other)
     /// For single-sided de-embedding: inv(other) ** self
-    pub fn deembed(&self, other: &Network) -> Option<Network> {
+    pub fn deembed(&self, other: &Network) -> Result<Network> {
         let other_inv = other.inv()?;
         other_inv.cascade(self)
     }
