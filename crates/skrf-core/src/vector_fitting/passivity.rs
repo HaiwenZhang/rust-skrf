@@ -57,10 +57,10 @@ pub fn build_state_space_matrices(
     proportional_coeff: &Array1<f64>,
     nports: usize,
 ) -> StateSpaceMatrices {
-    // Count real and complex poles
-    let n_poles_real = poles.iter().filter(|p| p.im == 0.0).count();
-    let n_poles_cmplx = poles.iter().filter(|p| p.im != 0.0).count();
-    let model_order = n_poles_real + 2 * n_poles_cmplx;
+    // Use PoleSet to compute model order
+    use super::poles::PoleSet;
+    let pole_set = PoleSet::from_array(poles);
+    let model_order = pole_set.model_order();
     let n_matrix = nports * model_order;
 
     // Initialize matrices
@@ -235,10 +235,11 @@ pub fn passivity_test(
     let p_eigs = eigenvalues_real_matrix(&p)?;
 
     // Find purely imaginary square roots of eigenvalues
+    use super::constants::EIGENVALUE_TOLERANCE;
     let mut freqs_violation: Vec<f64> = Vec::new();
     for eig in p_eigs.iter() {
         let sqrt_eig = eig.sqrt();
-        if sqrt_eig.re.abs() < 1e-10 {
+        if sqrt_eig.re.abs() < EIGENVALUE_TOLERANCE {
             let freq = sqrt_eig.im.abs() / (2.0 * PI);
             freqs_violation.push(freq);
         }
@@ -288,149 +289,39 @@ pub fn passivity_test(
     })
 }
 
-// Helper functions for matrix operations using nalgebra
+// ============================================================================
+// Linear algebra operations - delegated to linalg module
+// ============================================================================
+
+use crate::math::linalg;
 
 fn invert_complex_matrix(a: &Array2<Complex64>) -> Option<Array2<Complex64>> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    if m != n {
-        return None;
-    }
-
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| {
-        nalgebra::Complex::new(a[[i, j]].re, a[[i, j]].im)
-    });
-
-    match na_matrix.try_inverse() {
-        Some(inv) => {
-            let mut result = Array2::<Complex64>::zeros((m, n));
-            for i in 0..m {
-                for j in 0..n {
-                    result[[i, j]] = Complex64::new(inv[(i, j)].re, inv[(i, j)].im);
-                }
-            }
-            Some(result)
-        }
-        None => None,
-    }
+    linalg::inv_complex(a)
 }
 
 fn invert_real_matrix(a: &Array2<f64>) -> Option<Array2<f64>> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    if m != n {
-        return None;
-    }
-
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| a[[i, j]]);
-
-    match na_matrix.try_inverse() {
-        Some(inv) => {
-            let mut result = Array2::<f64>::zeros((m, n));
-            for i in 0..m {
-                for j in 0..n {
-                    result[[i, j]] = inv[(i, j)];
-                }
-            }
-            Some(result)
-        }
-        None => None,
-    }
+    linalg::inv_real(a)
 }
 
 fn eigenvalues_real_matrix(a: &Array2<f64>) -> Result<Vec<Complex64>, String> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    if m != n {
-        return Err("Matrix must be square".to_string());
-    }
-
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| a[[i, j]]);
-    let eigs = na_matrix.complex_eigenvalues();
-
-    Ok(eigs.iter().map(|e| Complex64::new(e.re, e.im)).collect())
+    linalg::eigenvalues(a).map_err(|e| e.to_string())
 }
 
 fn singular_values_complex(a: &Array2<Complex64>) -> Result<Vec<f64>, String> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| {
-        nalgebra::Complex::new(a[[i, j]].re, a[[i, j]].im)
-    });
-
-    let svd = na_matrix.svd(false, false);
-    Ok(svd.singular_values.iter().cloned().collect())
+    Ok(linalg::singular_values(a))
 }
 
 /// Perform full SVD on a complex matrix, returning U, S, Vh
 fn svd_complex_full(
     a: &Array2<Complex64>,
 ) -> Result<(Array2<Complex64>, Vec<f64>, Array2<Complex64>), String> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| {
-        nalgebra::Complex::new(a[[i, j]].re, a[[i, j]].im)
-    });
-
-    let svd = na_matrix.svd(true, true);
-
-    let u = svd.u.ok_or("SVD failed: no U matrix")?;
-    let vh = svd.v_t.ok_or("SVD failed: no Vh matrix")?;
-    let sigma: Vec<f64> = svd.singular_values.iter().cloned().collect();
-
-    // Convert back to ndarray
-    let mut u_arr = Array2::<Complex64>::zeros((m, m));
-    for i in 0..m {
-        for j in 0..m {
-            u_arr[[i, j]] = Complex64::new(u[(i, j)].re, u[(i, j)].im);
-        }
-    }
-
-    let mut vh_arr = Array2::<Complex64>::zeros((n, n));
-    for i in 0..n {
-        for j in 0..n {
-            vh_arr[[i, j]] = Complex64::new(vh[(i, j)].re, vh[(i, j)].im);
-        }
-    }
-
-    Ok((u_arr, sigma, vh_arr))
+    linalg::svd_complex(a).map_err(|e| e.to_string())
 }
 
 /// Perform full SVD on a real matrix
 #[allow(dead_code)]
 fn svd_real_full(a: &Array2<f64>) -> Result<(Array2<f64>, Vec<f64>, Array2<f64>), String> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    let na_matrix = DMatrix::from_fn(m, n, |i, j| a[[i, j]]);
-
-    let svd = na_matrix.svd(true, true);
-
-    let u = svd.u.ok_or("SVD failed: no U matrix")?;
-    let vh = svd.v_t.ok_or("SVD failed: no Vh matrix")?;
-    let sigma: Vec<f64> = svd.singular_values.iter().cloned().collect();
-
-    // Convert back to ndarray
-    let mut u_arr = Array2::<f64>::zeros((m, m));
-    for i in 0..m {
-        for j in 0..m {
-            u_arr[[i, j]] = u[(i, j)];
-        }
-    }
-
-    let mut vh_arr = Array2::<f64>::zeros((n, n));
-    for i in 0..n {
-        for j in 0..n {
-            vh_arr[[i, j]] = vh[(i, j)];
-        }
-    }
-
-    Ok((u_arr, sigma, vh_arr))
+    linalg::svd_real(a).map_err(|e| e.to_string())
 }
 
 /// Result of passivity enforcement
@@ -444,6 +335,84 @@ pub struct PassivityEnforceResult {
     pub iterations: usize,
     /// Whether enforcement was successful
     pub success: bool,
+}
+
+// ============================================================================
+// Helper functions for passivity_enforce decomposition
+// ============================================================================
+
+/// Precompute (s*I - A)^-1 * B for all evaluation frequencies
+///
+/// Returns a 3D array [n_samples, dim_a, nports] of frequency coefficients.
+fn precompute_frequency_coefficients(
+    ss: &StateSpaceMatrices,
+    freqs: &[f64],
+    nports: usize,
+) -> Array3<Complex64> {
+    let dim_a = ss.a.nrows();
+    let n_samples = freqs.len();
+    let mut coeffs = Array3::<Complex64>::zeros((n_samples, dim_a, nports));
+
+    for (f_idx, &freq) in freqs.iter().enumerate() {
+        let s = Complex64::new(0.0, 2.0 * PI * freq);
+
+        let mut s_minus_a = Array2::<Complex64>::zeros((dim_a, dim_a));
+        for i in 0..dim_a {
+            for j in 0..dim_a {
+                if i == j {
+                    s_minus_a[[i, j]] = s - Complex64::new(ss.a[[i, j]], 0.0);
+                } else {
+                    s_minus_a[[i, j]] = Complex64::new(-ss.a[[i, j]], 0.0);
+                }
+            }
+        }
+
+        if let Some(inv) = invert_complex_matrix(&s_minus_a) {
+            let b_complex = ss.b.mapv(|x| Complex64::new(x, 0.0));
+            let coeff = inv.dot(&b_complex);
+            for i in 0..dim_a {
+                for j in 0..nports {
+                    coeffs[[f_idx, i, j]] = coeff[[i, j]];
+                }
+            }
+        }
+    }
+
+    coeffs
+}
+
+/// Convert C matrix back to residues format
+///
+/// Transforms the perturbed C matrix into the standard residue format.
+fn c_matrix_to_residues(
+    c_t: &Array2<f64>,
+    poles: &Array1<Complex64>,
+    original_residues: &Array2<Complex64>,
+    nports: usize,
+    model_order: usize,
+) -> Array2<Complex64> {
+    let mut new_residues = original_residues.clone();
+
+    for i in 0..nports {
+        for j in 0..nports {
+            let i_response = i * nports + j;
+            let mut z = 0; // residue index
+            let mut k = j * model_order; // C_t column index
+
+            for pole in poles.iter() {
+                if pole.im == 0.0 {
+                    new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], 0.0);
+                    k += 1;
+                } else {
+                    new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], c_t[[i, k + 1]]);
+                    k += 2;
+                }
+                z += 1;
+            }
+        }
+    }
+
+    new_residues
 }
 
 /// Enforce passivity of the vector fitted model
@@ -499,47 +468,23 @@ pub fn passivity_enforce(
     let mut c_t = ss.c.clone();
 
     // Frequency evaluation band
-    let f_eval_max = 1.2 * f_max;
+    use super::constants::PASSIVITY_FREQ_MARGIN;
+    let f_eval_max = PASSIVITY_FREQ_MARGIN * f_max;
     let freqs_eval: Vec<f64> = (0..n_samples)
         .map(|i| i as f64 * f_eval_max / (n_samples - 1) as f64)
         .collect();
 
     // Count model order
-    let n_poles_real = poles.iter().filter(|p| p.im == 0.0).count();
-    let n_poles_cmplx = poles.iter().filter(|p| p.im != 0.0).count();
-    let model_order = n_poles_real + 2 * n_poles_cmplx;
+    use super::poles::PoleSet;
+    let pole_set = PoleSet::from_array(poles);
+    let model_order = pole_set.model_order();
 
-    // Precompute (s*I - A)^-1 * B for all frequencies
-    let dim_a = ss.a.nrows();
-    let mut coeffs = Array3::<Complex64>::zeros((n_samples, dim_a, nports));
-
-    for (f_idx, &freq) in freqs_eval.iter().enumerate() {
-        let s = Complex64::new(0.0, 2.0 * PI * freq);
-
-        let mut s_minus_a = Array2::<Complex64>::zeros((dim_a, dim_a));
-        for i in 0..dim_a {
-            for j in 0..dim_a {
-                if i == j {
-                    s_minus_a[[i, j]] = s - Complex64::new(ss.a[[i, j]], 0.0);
-                } else {
-                    s_minus_a[[i, j]] = Complex64::new(-ss.a[[i, j]], 0.0);
-                }
-            }
-        }
-
-        if let Some(inv) = invert_complex_matrix(&s_minus_a) {
-            let b_complex = ss.b.mapv(|x| Complex64::new(x, 0.0));
-            let coeff = inv.dot(&b_complex);
-            for i in 0..dim_a {
-                for j in 0..nports {
-                    coeffs[[f_idx, i, j]] = coeff[[i, j]];
-                }
-            }
-        }
-    }
+    // Precompute (s*I - A)^-1 * B for all frequencies (use helper function)
+    let coeffs = precompute_frequency_coefficients(&ss, &freqs_eval, nports);
 
     // Iteration parameters
-    let delta_threshold = 0.999;
+    use super::constants::PASSIVITY_DELTA_THRESHOLD;
+    let delta_threshold = PASSIVITY_DELTA_THRESHOLD;
     let mut sigma_max = 1.1;
     let mut t = 0;
     let mut history_max_sigma: Vec<f64> = Vec::new();
@@ -612,16 +557,17 @@ pub fn passivity_enforce(
             for j in 0..nports {
                 let mut update = 0.0;
                 let mut count = 0;
+                use super::constants::{PASSIVITY_DAMPING_FACTOR, VIOLATION_TOLERANCE};
                 for f_idx in 0..n_samples {
                     let viol = s_viol[[f_idx, i, j]];
-                    if viol.norm() > 1e-12 {
+                    if viol.norm() > VIOLATION_TOLERANCE {
                         update += viol.re;
                         count += 1;
                     }
                 }
                 if count > 0 {
                     // Simple averaging perturbation
-                    let perturbation = update / count as f64 * 0.1; // damping factor
+                    let perturbation = update / count as f64 * PASSIVITY_DAMPING_FACTOR;
                     for k in 0..model_order {
                         let idx = j * model_order + k;
                         if idx < c_t.ncols() {
@@ -635,26 +581,8 @@ pub fn passivity_enforce(
         t += 1;
     }
 
-    // Convert C_t back to residues format
-    let mut new_residues = residues.clone();
-    for i in 0..nports {
-        for j in 0..nports {
-            let i_response = i * nports + j;
-            let mut z = 0; // residue index
-            let mut k = j * model_order; // C_t column index
-
-            for pole in poles.iter() {
-                if pole.im == 0.0 {
-                    new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], 0.0);
-                    k += 1;
-                } else {
-                    new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], c_t[[i, k + 1]]);
-                    k += 2;
-                }
-                z += 1;
-            }
-        }
-    }
+    // Convert C_t back to residues format (use helper function)
+    let new_residues = c_matrix_to_residues(&c_t, poles, residues, nports, model_order);
 
     // Final passivity check
     let final_test = passivity_test(

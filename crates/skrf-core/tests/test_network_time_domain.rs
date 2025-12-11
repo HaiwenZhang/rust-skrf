@@ -3,12 +3,11 @@
 //! Tests for time-domain analysis functions (impulse response, step response).
 //! Translated from Python scikit-rf test_network.py (lines 127-290)
 
-use approx::assert_relative_eq;
 use ndarray::{Array1, Array3};
 use num_complex::Complex64;
 use skrf_core::frequency::{Frequency, FrequencyUnit, SweepType};
-use skrf_core::network::WindowType;
 use skrf_core::network::Network;
+use skrf_core::network::WindowType;
 use std::f64::consts::PI;
 
 const TEST_DATA_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/data");
@@ -65,7 +64,10 @@ fn test_impulse_response_with_hamming() {
     let ntwk = create_delay_line(0.1, 21);
 
     let result = ntwk.impulse_response(WindowType::Hamming, 0);
-    assert!(result.is_some(), "Impulse response with Hamming should succeed");
+    assert!(
+        result.is_some(),
+        "Impulse response with Hamming should succeed"
+    );
 
     let (t, ir) = result.unwrap();
     assert_eq!(t.len(), 21);
@@ -77,7 +79,10 @@ fn test_impulse_response_with_hanning() {
     let ntwk = create_delay_line(0.1, 21);
 
     let result = ntwk.impulse_response(WindowType::Hanning, 0);
-    assert!(result.is_some(), "Impulse response with Hanning should succeed");
+    assert!(
+        result.is_some(),
+        "Impulse response with Hanning should succeed"
+    );
 }
 
 #[test]
@@ -85,7 +90,10 @@ fn test_impulse_response_with_blackman() {
     let ntwk = create_delay_line(0.1, 21);
 
     let result = ntwk.impulse_response(WindowType::Blackman, 0);
-    assert!(result.is_some(), "Impulse response with Blackman should succeed");
+    assert!(
+        result.is_some(),
+        "Impulse response with Blackman should succeed"
+    );
 }
 
 #[test]
@@ -94,7 +102,10 @@ fn test_impulse_response_with_padding() {
     let pad = 10;
 
     let result = ntwk.impulse_response(WindowType::Hamming, pad);
-    assert!(result.is_some(), "Impulse response with padding should succeed");
+    assert!(
+        result.is_some(),
+        "Impulse response with padding should succeed"
+    );
 
     let (t, ir) = result.unwrap();
     // Total points should include padding
@@ -150,7 +161,7 @@ fn test_step_response_with_padding() {
     let result = ntwk.step_response(WindowType::Hamming, pad);
     assert!(result.is_some());
 
-    let (t, sr) = result.unwrap();
+    let (t, _) = result.unwrap();
     assert_eq!(t.len(), 21 + pad);
 }
 

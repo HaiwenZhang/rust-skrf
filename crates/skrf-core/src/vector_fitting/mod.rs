@@ -12,11 +12,14 @@
 //!   IEEE Trans. Power Delivery, vol. 21, no. 3, 2006
 
 mod algorithms;
+pub mod constants;
 mod core;
 mod model;
 pub mod passivity;
+pub mod poles;
 pub mod spice;
 
 pub use self::core::VectorFitting;
 pub use algorithms::{InitPoleSpacing, PoleRelocationResult};
 pub use passivity::{PassivityEnforceResult, PassivityTestResult};
+pub use poles::PoleSet;

@@ -48,11 +48,12 @@ pub fn init_poles(
     let f_max = freqs.iter().cloned().fold(0.0, f64::max);
 
     // Poles cannot be at f=0
+    use super::constants::MIN_FREQUENCY_FRACTION;
     let f_min = if f_min == 0.0 {
         if freqs.len() > 1 {
             freqs[1] / 1000.0
         } else {
-            1e-6
+            MIN_FREQUENCY_FRACTION
         }
     } else {
         f_min
@@ -76,9 +77,10 @@ pub fn init_poles(
     }
 
     // Add complex-conjugate poles (store only positive imaginary part)
+    use super::constants::COMPLEX_POLE_DAMPING_RATIO;
     for (i, f) in cmplx_freqs.iter().enumerate() {
         let omega = 2.0 * PI * f;
-        poles[n_poles_real + i] = Complex64::new(-0.01 * omega, omega);
+        poles[n_poles_real + i] = Complex64::new(-COMPLEX_POLE_DAMPING_RATIO * omega, omega);
     }
 
     poles
@@ -88,15 +90,113 @@ pub fn init_poles(
 ///
 /// Order = N_real + 2 * N_complex
 pub fn get_model_order(poles: &Array1<Complex64>) -> usize {
-    let mut order = 0;
-    for pole in poles.iter() {
-        if pole.im == 0.0 {
-            order += 1; // Real pole
-        } else {
-            order += 2; // Complex conjugate pair
+    super::poles::model_order_from_poles(poles)
+}
+
+// ============================================================================
+// Helper structures for pole_relocation decomposition
+// ============================================================================
+
+/// Indices for categorized poles (real vs complex)
+struct PoleIndices {
+    /// Indices of real poles in the original array
+    real: Vec<usize>,
+    /// Indices of complex poles in the original array
+    complex: Vec<usize>,
+    /// Column indices for real residues
+    res_real: Vec<usize>,
+    /// Column indices for complex residue real parts
+    res_cmplx_re: Vec<usize>,
+    /// Column indices for complex residue imaginary parts
+    res_cmplx_im: Vec<usize>,
+}
+
+impl PoleIndices {
+    /// Compute pole indices from pole array
+    fn from_poles(poles: &Array1<Complex64>) -> Self {
+        let real: Vec<usize> = poles
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.im == 0.0)
+            .map(|(i, _)| i)
+            .collect();
+
+        let complex: Vec<usize> = poles
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.im != 0.0)
+            .map(|(i, _)| i)
+            .collect();
+
+        let n_real = real.len();
+        let n_cmplx = complex.len();
+
+        let res_real: Vec<usize> = (0..n_real).collect();
+        let res_cmplx_re: Vec<usize> = (0..n_cmplx).map(|i| n_real + 2 * i).collect();
+        let res_cmplx_im: Vec<usize> = (0..n_cmplx).map(|i| n_real + 2 * i + 1).collect();
+
+        Self {
+            real,
+            complex,
+            res_real,
+            res_cmplx_re,
+            res_cmplx_im,
         }
     }
-    order
+
+    #[inline]
+    fn n_real(&self) -> usize {
+        self.real.len()
+    }
+
+    #[inline]
+    fn n_complex(&self) -> usize {
+        self.complex.len()
+    }
+}
+
+/// Build H matrix for eigenvalue extraction in pole relocation
+///
+/// The H matrix is constructed such that its eigenvalues are the new poles.
+fn build_h_matrix(
+    poles: &Array1<Complex64>,
+    indices: &PoleIndices,
+    c_res: &[f64],
+    d_res: f64,
+    model_order: usize,
+) -> Array2<f64> {
+    let mut h = Array2::<f64>::zeros((model_order, model_order));
+
+    // Real poles contribution
+    for (i, &pole_idx) in indices.real.iter().enumerate() {
+        let col = indices.res_real[i];
+        h[[col, col]] = poles[pole_idx].re;
+        // Subtract c_res / d_res from entire row
+        let c_i = c_res[col];
+        for j in 0..model_order {
+            h[[col, j]] -= c_i / d_res;
+        }
+    }
+
+    // Complex poles contribution
+    for (i, &pole_idx) in indices.complex.iter().enumerate() {
+        let col_re = indices.res_cmplx_re[i];
+        let col_im = indices.res_cmplx_im[i];
+        let pole = poles[pole_idx];
+
+        h[[col_re, col_re]] = pole.re;
+        h[[col_re, col_im]] = pole.im;
+        h[[col_im, col_re]] = -pole.im;
+        h[[col_im, col_im]] = pole.re;
+
+        // Subtract 2 * c_res_re / d_res from real part row
+        let c_re = c_res[col_re];
+        for j in 0..model_order {
+            h[[col_re, j]] -= 2.0 * c_re / d_res;
+        }
+    }
+
+    h
 }
 
 /// Pole relocation algorithm following Python scikit-rf implementation
@@ -139,22 +239,10 @@ pub fn pole_relocation(
     // Sqrt of weights for rows
     let weights_sqrt: Vec<f64> = weights.iter().map(|w| w.sqrt()).collect();
 
-    // Separate real and complex poles
-    let idx_poles_real: Vec<usize> = poles
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| p.im == 0.0)
-        .map(|(i, _)| i)
-        .collect();
-    let idx_poles_cmplx: Vec<usize> = poles
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| p.im != 0.0)
-        .map(|(i, _)| i)
-        .collect();
-
-    let n_real = idx_poles_real.len();
-    let n_cmplx = idx_poles_cmplx.len();
+    // Use PoleIndices struct for cleaner indexing
+    let indices = PoleIndices::from_poles(poles);
+    let n_real = indices.n_real();
+    let n_cmplx = indices.n_complex();
     let model_order = get_model_order(poles);
 
     // Column indices for the coefficient matrix
@@ -176,15 +264,10 @@ pub fn pole_relocation(
     };
     let n_cols_used = model_order + 1; // c_res terms + d_res
 
-    // Build index arrays for residue columns
-    let idx_res_real: Vec<usize> = (0..n_real).collect();
-    let idx_res_cmplx_re: Vec<usize> = (0..n_cmplx).map(|i| n_real + 2 * i).collect();
-    let idx_res_cmplx_im: Vec<usize> = (0..n_cmplx).map(|i| n_real + 2 * i + 1).collect();
-
     // Calculate coefficient matrices for poles
     // coeff_real[freq, pole_idx] = 1 / (s - pole)
     let mut coeff_real = Array2::<Complex64>::zeros((n_freqs, n_real));
-    for (i, &pole_idx) in idx_poles_real.iter().enumerate() {
+    for (i, &pole_idx) in indices.real.iter().enumerate() {
         let pole = poles[pole_idx];
         for (f, &s_f) in s.iter().enumerate() {
             coeff_real[[f, i]] = Complex64::new(1.0, 0.0) / (s_f - pole);
@@ -194,7 +277,7 @@ pub fn pole_relocation(
     // Complex pole coefficients
     let mut coeff_cmplx_re = Array2::<Complex64>::zeros((n_freqs, n_cmplx));
     let mut coeff_cmplx_im = Array2::<Complex64>::zeros((n_freqs, n_cmplx));
-    for (i, &pole_idx) in idx_poles_cmplx.iter().enumerate() {
+    for (i, &pole_idx) in indices.complex.iter().enumerate() {
         let pole = poles[pole_idx];
         for (f, &s_f) in s.iter().enumerate() {
             let term1 = Complex64::new(1.0, 0.0) / (s_f - pole);
@@ -213,12 +296,14 @@ pub fn pole_relocation(
             let h = freq_responses[[resp_idx, freq_idx]];
 
             // Part 1: First sum of rational functions (unused part - for c)
-            for (i, _) in idx_poles_real.iter().enumerate() {
-                a_matrix[[resp_idx, freq_idx, idx_res_real[i]]] = coeff_real[[freq_idx, i]];
+            for (i, _) in indices.real.iter().enumerate() {
+                a_matrix[[resp_idx, freq_idx, indices.res_real[i]]] = coeff_real[[freq_idx, i]];
             }
-            for (i, _) in idx_poles_cmplx.iter().enumerate() {
-                a_matrix[[resp_idx, freq_idx, idx_res_cmplx_re[i]]] = coeff_cmplx_re[[freq_idx, i]];
-                a_matrix[[resp_idx, freq_idx, idx_res_cmplx_im[i]]] = coeff_cmplx_im[[freq_idx, i]];
+            for (i, _) in indices.complex.iter().enumerate() {
+                a_matrix[[resp_idx, freq_idx, indices.res_cmplx_re[i]]] =
+                    coeff_cmplx_re[[freq_idx, i]];
+                a_matrix[[resp_idx, freq_idx, indices.res_cmplx_im[i]]] =
+                    coeff_cmplx_im[[freq_idx, i]];
             }
 
             // Part 2: Constant and proportional terms
@@ -230,14 +315,14 @@ pub fn pole_relocation(
             }
 
             // Part 3: Second sum multiplied by -h (used part - for c_res)
-            for (i, _) in idx_poles_real.iter().enumerate() {
-                a_matrix[[resp_idx, freq_idx, n_cols_unused + idx_res_real[i]]] =
+            for (i, _) in indices.real.iter().enumerate() {
+                a_matrix[[resp_idx, freq_idx, n_cols_unused + indices.res_real[i]]] =
                     -h * coeff_real[[freq_idx, i]];
             }
-            for (i, _) in idx_poles_cmplx.iter().enumerate() {
-                a_matrix[[resp_idx, freq_idx, n_cols_unused + idx_res_cmplx_re[i]]] =
+            for (i, _) in indices.complex.iter().enumerate() {
+                a_matrix[[resp_idx, freq_idx, n_cols_unused + indices.res_cmplx_re[i]]] =
                     -h * coeff_cmplx_re[[freq_idx, i]];
-                a_matrix[[resp_idx, freq_idx, n_cols_unused + idx_res_cmplx_im[i]]] =
+                a_matrix[[resp_idx, freq_idx, n_cols_unused + indices.res_cmplx_im[i]]] =
                     -h * coeff_cmplx_im[[freq_idx, i]];
             }
 
@@ -298,15 +383,15 @@ pub fn pole_relocation(
 
     // Extra equation to avoid trivial solution (last row)
     let last_row = dim0 - 1;
-    for (i, _) in idx_poles_real.iter().enumerate() {
+    for (i, _) in indices.real.iter().enumerate() {
         let sum: f64 = (0..n_freqs).map(|f| coeff_real[[f, i]].re).sum();
-        a_fast[[last_row, idx_res_real[i]]] = sum;
+        a_fast[[last_row, indices.res_real[i]]] = sum;
     }
-    for (i, _) in idx_poles_cmplx.iter().enumerate() {
+    for (i, _) in indices.complex.iter().enumerate() {
         let sum_re: f64 = (0..n_freqs).map(|f| coeff_cmplx_re[[f, i]].re).sum();
         let sum_im: f64 = (0..n_freqs).map(|f| coeff_cmplx_im[[f, i]].re).sum();
-        a_fast[[last_row, idx_res_cmplx_re[i]]] = sum_re;
-        a_fast[[last_row, idx_res_cmplx_im[i]]] = sum_im;
+        a_fast[[last_row, indices.res_cmplx_re[i]]] = sum_re;
+        a_fast[[last_row, indices.res_cmplx_im[i]]] = sum_im;
     }
     a_fast[[last_row, n_cols_used - 1]] = n_freqs as f64;
 
@@ -316,13 +401,18 @@ pub fn pole_relocation(
     }
 
     // Column scaling for numerical stability
+    use super::constants::NORM_TOLERANCE;
     let mut scaling = Array1::<f64>::zeros(n_cols_used);
     for col in 0..n_cols_used {
         let norm: f64 = (0..dim0)
             .map(|row| a_fast[[row, col]].powi(2))
             .sum::<f64>()
             .sqrt();
-        scaling[col] = if norm > 1e-15 { 1.0 / norm } else { 1.0 };
+        scaling[col] = if norm > NORM_TOLERANCE {
+            1.0 / norm
+        } else {
+            1.0
+        };
     }
     for row in 0..dim0 {
         for col in 0..n_cols_used {
@@ -346,43 +436,13 @@ pub fn pole_relocation(
     let mut d_res = x[n_cols_used - 1];
 
     // Check if d_res is too small
-    let tol_res = 1e-8;
-    if d_res.abs() < tol_res {
-        d_res = tol_res * d_res.signum();
+    use super::constants::RESIDUE_TOLERANCE;
+    if d_res.abs() < RESIDUE_TOLERANCE {
+        d_res = RESIDUE_TOLERANCE * d_res.signum();
     }
 
-    // Build test matrix H for eigenvalue extraction
-    let h_size = model_order;
-    let mut h_matrix = Array2::<f64>::zeros((h_size, h_size));
-
-    // Real poles
-    for (i, &pole_idx) in idx_poles_real.iter().enumerate() {
-        let col = idx_res_real[i];
-        h_matrix[[col, col]] = poles[pole_idx].re;
-        // Subtract c_res / d_res from entire row
-        let c_i = c_res[col];
-        for j in 0..h_size {
-            h_matrix[[col, j]] -= c_i / d_res;
-        }
-    }
-
-    // Complex poles
-    for (i, &pole_idx) in idx_poles_cmplx.iter().enumerate() {
-        let col_re = idx_res_cmplx_re[i];
-        let col_im = idx_res_cmplx_im[i];
-        let pole = poles[pole_idx];
-
-        h_matrix[[col_re, col_re]] = pole.re;
-        h_matrix[[col_re, col_im]] = pole.im;
-        h_matrix[[col_im, col_re]] = -pole.im;
-        h_matrix[[col_im, col_im]] = pole.re;
-
-        // Subtract 2 * c_res_re / d_res from real part row
-        let c_re = c_res[col_re];
-        for j in 0..h_size {
-            h_matrix[[col_re, j]] -= 2.0 * c_re / d_res;
-        }
-    }
+    // Build test matrix H for eigenvalue extraction (use helper function)
+    let h_matrix = build_h_matrix(poles, &indices, &c_res, d_res, model_order);
 
     // Extract eigenvalues to get new poles
     let new_poles = eigenvalues_to_poles(&h_matrix)?;
@@ -563,77 +623,38 @@ fn stack_real_imag_vector(v: &Array1<Complex64>) -> Array1<f64> {
     result
 }
 
+// ============================================================================
+// Linear algebra operations - delegated to linalg module
+// ============================================================================
+
+use crate::math::linalg;
+
 /// QR decomposition returning only R matrix (upper triangular)
 fn qr_r(a: &Array2<f64>) -> Result<Array2<f64>, String> {
-    use nalgebra::DMatrix;
-
-    let (m, n) = a.dim();
-    let a_na = DMatrix::from_fn(m, n, |i, j| a[[i, j]]);
-
-    let qr = a_na.qr();
-    let r = qr.r();
-
-    let k = m.min(n);
-    let mut result = Array2::<f64>::zeros((k, n));
-    for i in 0..k {
-        for j in 0..n {
-            result[[i, j]] = r[(i, j)];
-        }
-    }
-
-    Ok(result)
+    Ok(linalg::qr_r(a))
 }
 
 fn solve_least_squares(
     a: &Array2<f64>,
     b: &Array1<f64>,
 ) -> Result<(Vec<f64>, Vec<f64>, f64), String> {
-    use nalgebra::{DMatrix, DVector};
-
-    let (m, n) = a.dim();
-
-    // Convert to nalgebra matrices
-    let a_na = DMatrix::from_fn(m, n, |i, j| a[[i, j]]);
-    let b_na = DVector::from_fn(m, |i, _| b[i]);
-
-    // SVD-based least squares solve
-    let svd = a_na.clone().svd(true, true);
-
-    let solution = svd
-        .solve(&b_na, 1e-14)
-        .map_err(|_| "SVD solve failed".to_string())?;
-
-    let x: Vec<f64> = solution.iter().cloned().collect();
-
-    // Get singular values for condition number
-    let singular_vals: Vec<f64> = svd.singular_values.iter().cloned().collect();
-    let condition = if !singular_vals.is_empty() && singular_vals.last().unwrap().abs() > 1e-15 {
-        singular_vals[0] / singular_vals.last().unwrap()
-    } else {
-        f64::INFINITY
-    };
-
-    Ok((x, singular_vals, condition))
+    let result = linalg::lstsq(a, b).map_err(|e| e.to_string())?;
+    Ok((result.solution, result.singular_values, result.condition))
 }
 
 fn eigenvalues_to_poles(h: &Array2<f64>) -> Result<Array1<Complex64>, String> {
-    use nalgebra::DMatrix;
-
     let n = h.nrows();
     if n == 0 {
         return Ok(Array1::zeros(0));
     }
 
-    let h_na = DMatrix::from_fn(n, n, |i, j| h[[i, j]]);
-
     // Compute eigenvalues
-    let eigen = h_na.complex_eigenvalues();
+    let eigen = linalg::eigenvalues(h).map_err(|e| e.to_string())?;
 
     // Filter: keep only poles with positive (or zero) imaginary part
     // and flip unstable poles
     let mut poles: Vec<Complex64> = Vec::new();
-    for ev in eigen.iter() {
-        let pole = Complex64::new(ev.re, ev.im);
+    for pole in eigen.iter() {
         if pole.im >= 0.0 {
             // Flip unstable poles (make real part negative)
             let stable_pole = Complex64::new(-pole.re.abs(), pole.im);

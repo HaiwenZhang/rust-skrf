@@ -3,7 +3,6 @@
 //! Tests for derived properties like VSWR, group delay, stability, gain.
 //! Translated from Python scikit-rf test_network.py
 
-use approx::assert_relative_eq;
 use skrf_core::network::Network;
 
 const TEST_DATA_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/data");
@@ -43,7 +42,7 @@ fn test_group_delay() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load ntwk1.s2p");
 
     let gd = ntwk.group_delay().expect("Group delay failed");
-    
+
     // Group delay should have shape [nfreq, nports, nports]
     // Note: at boundaries the group delay may have edge effects
     assert_eq!(gd.shape()[1], ntwk.nports());
@@ -97,7 +96,7 @@ fn test_stability_thru() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load thru.s2p");
 
     let stability = ntwk.stability().expect("Stability failed");
-    
+
     for &k in stability.iter() {
         // Stability factor should be defined (not NaN)
         // For passive devices K >= 1
@@ -116,7 +115,7 @@ fn test_max_stable_gain() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load fet.s2p");
 
     let msg = ntwk.max_stable_gain().expect("MSG failed");
-    
+
     // MSG should be positive for an amplifier
     for &g in msg.iter() {
         assert!(g >= 0.0, "MSG should be non-negative");
@@ -129,7 +128,7 @@ fn test_max_gain() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load fet.s2p");
 
     let max_gain = ntwk.max_gain().expect("MAG failed");
-    
+
     for &g in max_gain.iter() {
         assert!(g.is_finite(), "Max gain should be finite");
     }
