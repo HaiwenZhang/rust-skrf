@@ -59,20 +59,21 @@ impl Network {
         let nports = self.nports();
         let mut result = Array3::<f64>::zeros((nfreq, nports, nports));
 
+        // Pre-compute identity matrix (reused for all frequencies)
+        let identity = ndarray::Array2::<f64>::eye(nports);
+
         for f in 0..nfreq {
             let s_f = self.s.slice(ndarray::s![f, .., ..]);
             // S^H = conj(transpose(S))
-            let s_h = s_f.mapv(|c| c.conj()).reversed_axes();
+            let s_h = s_f.t().mapv(|c| c.conj());
             // S^H * S
             let shs = s_h.dot(&s_f);
 
-            // I - S^H * S (extract real part)
-            for i in 0..nports {
-                for j in 0..nports {
-                    let identity_ij = if i == j { 1.0 } else { 0.0 };
-                    result[[f, i, j]] = identity_ij - shs[[i, j]].re;
-                }
-            }
+            // I - S^H * S (vectorized: extract real part and subtract from identity)
+            let passivity_f = &identity - &shs.mapv(|c| c.re);
+            result
+                .slice_mut(ndarray::s![f, .., ..])
+                .assign(&passivity_f);
         }
         result
     }
@@ -82,19 +83,10 @@ impl Network {
     /// For a reciprocal network, this should be zero.
     /// Returns the magnitude of (S_ij - S_ji) for each element.
     pub fn reciprocity(&self) -> Array3<f64> {
-        let nfreq = self.nfreq();
-        let nports = self.nports();
-        let mut result = Array3::<f64>::zeros((nfreq, nports, nports));
-
-        for f in 0..nfreq {
-            for i in 0..nports {
-                for j in 0..nports {
-                    let diff = self.s[[f, i, j]] - self.s[[f, j, i]];
-                    result[[f, i, j]] = diff.norm();
-                }
-            }
-        }
-        result
+        // S^T via permuted_axes: swap indices 1 and 2 (port dimensions)
+        let s_transpose = self.s.clone().permuted_axes([0, 2, 1]);
+        // Vectorized: compute S - S^T then take magnitude of each element
+        (&self.s - &s_transpose).mapv(|c| c.norm())
     }
 
     /// Group delay in seconds

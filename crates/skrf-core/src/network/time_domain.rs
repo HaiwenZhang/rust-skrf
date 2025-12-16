@@ -132,46 +132,48 @@ impl Network {
     }
 }
 
-/// Apply window function to S-parameters
+/// Apply window function to S-parameters using vectorized broadcasting
 fn apply_window(s: &Array3<Complex64>, window: WindowType) -> Array3<Complex64> {
     let nfreq = s.shape()[0];
     let nports = s.shape()[1];
 
     let w = match window {
         WindowType::None => vec![1.0; nfreq],
-        WindowType::Hamming => hamming_window(nfreq),
-        WindowType::Hanning => hanning_window(nfreq),
-        WindowType::Blackman => blackman_window(nfreq),
+        WindowType::Hamming => cosine_window(nfreq, &[0.54, 0.46]),
+        WindowType::Hanning => cosine_window(nfreq, &[0.5, 0.5]),
+        WindowType::Blackman => cosine_window(nfreq, &[0.42, 0.5, 0.08]),
     };
 
-    let mut result = s.clone();
-    for f in 0..nfreq {
-        for i in 0..nports {
-            for j in 0..nports {
-                result[[f, i, j]] = s[[f, i, j]] * Complex64::new(w[f], 0.0);
-            }
-        }
+    // Vectorized: broadcast 1D window to 3D shape and multiply
+    let w_array = Array1::from_vec(w);
+    let w_3d = w_array
+        .into_shape_with_order((nfreq, 1, 1))
+        .unwrap()
+        .broadcast((nfreq, nports, nports))
+        .unwrap()
+        .mapv(|x| Complex64::new(x, 0.0));
+
+    s * &w_3d
+}
+
+/// Generalized cosine window: w[n] = sum((-1)^k * coeffs[k] * cos(k * 2π * n / (N-1)))
+///
+/// This unifies Hamming, Hanning, and Blackman windows with different coefficients.
+fn cosine_window(n: usize, coeffs: &[f64]) -> Vec<f64> {
+    if n <= 1 {
+        return vec![1.0; n];
     }
-    result
-}
-
-fn hamming_window(n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| 0.54 - 0.46 * (2.0 * PI * i as f64 / (n - 1) as f64).cos())
-        .collect()
-}
-
-fn hanning_window(n: usize) -> Vec<f64> {
-    (0..n)
-        .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f64 / (n - 1) as f64).cos()))
-        .collect()
-}
-
-fn blackman_window(n: usize) -> Vec<f64> {
     (0..n)
         .map(|i| {
             let x = 2.0 * PI * i as f64 / (n - 1) as f64;
-            0.42 - 0.5 * x.cos() + 0.08 * (2.0 * x).cos()
+            coeffs
+                .iter()
+                .enumerate()
+                .map(|(k, &c)| {
+                    let sign = if k % 2 == 0 { 1.0 } else { -1.0 };
+                    sign * c * (k as f64 * x).cos()
+                })
+                .sum()
         })
         .collect()
 }
