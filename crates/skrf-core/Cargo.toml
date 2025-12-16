@@ -15,3 +15,16 @@ anyhow = "1.0"
 
 [dev-dependencies]
 approx.workspace = true
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "network_derived"
+harness = false
+
+[[bench]]
+name = "time_domain"
+harness = false
+
+[[bench]]
+name = "vector_fitting"
+harness = false
