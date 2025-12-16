@@ -7,6 +7,7 @@ use ndarray::Array3;
 use num_complex::Complex64;
 
 use super::core::Network;
+use crate::constants::{DC_FREQ_TOL, NEAR_ZERO};
 use crate::frequency::{Frequency, FrequencyUnit, SweepType};
 
 impl Network {
@@ -128,7 +129,7 @@ impl Network {
         let nports = self.nports();
 
         // Check if already starts at DC
-        if nfreq > 0 && f[0].abs() < 1e-10 {
+        if nfreq > 0 && f[0].abs() < DC_FREQ_TOL {
             return self.clone();
         }
 
@@ -160,7 +161,7 @@ impl Network {
                             let s0 = self.s[[0, i, j]];
                             let s1 = self.s[[1, i, j]];
                             let df = f[1] - f[0];
-                            if df.abs() > 1e-15 {
+                            if df.abs() > NEAR_ZERO {
                                 // Linear extrapolation back to DC
                                 s0 - (s1 - s0) * Complex64::new(f[0] / df, 0.0)
                             } else {
