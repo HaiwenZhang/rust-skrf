@@ -300,6 +300,36 @@ impl ParserState {
         }
     }
 
+    /// Determine if 2-port data uses 21_12 order (S11, S21, S12, S22)
+    ///
+    /// V1: Always uses 21_12 order
+    /// V2: Defaults to 12_21 (S11, S12, S21, S22) unless [Two-Port Data Order] 21_12
+    #[inline]
+    fn use_21_12_order(&self) -> bool {
+        !self.is_v2 || self.two_port_order_21_12
+    }
+
+    /// Map 2-port flat index to (row, col) based on ordering
+    ///
+    /// For 21_12 order: 0->S11, 1->S21, 2->S12, 3->S22
+    /// For 12_21 order: 0->S11, 1->S12, 2->S21, 3->S22 (row-major)
+    #[inline]
+    fn map_2port_index(&self, flat_idx: usize) -> (usize, usize) {
+        if self.use_21_12_order() {
+            // 21_12: S11, S21, S12, S22
+            match flat_idx {
+                0 => (0, 0), // S11
+                1 => (1, 0), // S21
+                2 => (0, 1), // S12
+                3 => (1, 1), // S22
+                _ => (flat_idx / 2, flat_idx % 2),
+            }
+        } else {
+            // 12_21: row-major (S11, S12, S21, S22)
+            (flat_idx / 2, flat_idx % 2)
+        }
+    }
+
     fn parse_keyword(&mut self, line: &str) -> Result<(), TouchstoneError> {
         let line_lower = line.to_lowercase();
         if line_lower.starts_with("[version]") {
@@ -437,34 +467,13 @@ impl ParserState {
                             idx += 2;
                             let c = self.parse_complex_val(v1, v2);
 
-                            // Handle V1 order mapping if 2-port
-                            if self.nports == 2 && !self.is_v2 {
-                                // V1 2-port specific order
-                                let (r, c_idx) = match i * 2 + j {
-                                    0 => (0, 0), // S11
-                                    1 => (1, 0), // S21
-                                    2 => (0, 1), // S12
-                                    3 => (1, 1), // S22
-                                    _ => (i, j),
-                                };
-                                s_matrix[r][c_idx] = c;
-                            } else if self.nports == 2 && self.is_v2 && !self.two_port_order_21_12 {
-                                // V2 2-port 12_21 order
-                                s_matrix[i][j] = c;
-                            } else if self.nports == 2 && self.is_v2 && self.two_port_order_21_12 {
-                                // V2 2-port 21_12 (Same as V1 default)
-                                let (r, c_idx) = match i * 2 + j {
-                                    0 => (0, 0), // S11
-                                    1 => (1, 0), // S21
-                                    2 => (0, 1), // S12
-                                    3 => (1, 1), // S22
-                                    _ => (i, j),
-                                };
-                                s_matrix[r][c_idx] = c;
+                            // Use helper for 2-port ordering, pass through for n-port
+                            let (r, c_idx) = if self.nports == 2 {
+                                self.map_2port_index(i * 2 + j)
                             } else {
-                                // Standard row-major
-                                s_matrix[i][j] = c;
-                            }
+                                (i, j)
+                            };
+                            s_matrix[r][c_idx] = c;
                         }
                     }
                 }

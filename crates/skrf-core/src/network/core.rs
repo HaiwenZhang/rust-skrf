@@ -67,15 +67,8 @@ impl Network {
         let nfreq = ts.nfreq();
         let nports = ts.nports;
 
-        // Convert Vec<Vec<Vec<Complex64>>> to Array3<Complex64>
-        let mut s = Array3::<Complex64>::zeros((nfreq, nports, nports));
-        for f in 0..nfreq {
-            for i in 0..nports {
-                for j in 0..nports {
-                    s[[f, i, j]] = ts.s[f][i][j];
-                }
-            }
-        }
+        // Convert Vec<Vec<Vec<Complex64>>> to Array3<Complex64> using from_shape_fn
+        let s = Array3::from_shape_fn((nfreq, nports, nports), |(f, i, j)| ts.s[f][i][j]);
 
         // Convert z0 vector to Array1<Complex64>
         let z0 = Array1::from_vec(ts.z0.iter().map(|&x| Complex64::new(x, 0.0)).collect());
@@ -127,23 +120,19 @@ impl Network {
             return params.clone(); // V2 params are not normalized
         }
 
-        let nfreq = params.shape()[0];
         let nports = params.shape()[1];
-        let mut result = params.clone();
 
-        for f in 0..nfreq {
-            for i in 0..nports {
-                for j in 0..nports {
-                    let scaling = (ts.z0[i] * ts.z0[j]).sqrt();
-                    if is_z_params {
-                        result[[f, i, j]] = result[[f, i, j]] * scaling;
-                    } else {
-                        result[[f, i, j]] = result[[f, i, j]] / scaling;
-                    }
-                }
-            }
+        // Pre-compute scaling matrix: sqrt(z0[i] * z0[j]) for all i,j
+        let scaling_2d = ndarray::Array2::from_shape_fn((nports, nports), |(i, j)| {
+            Complex64::new((ts.z0[i] * ts.z0[j]).sqrt(), 0.0)
+        });
+
+        // Apply scaling via broadcasting (2D scaling applies to each frequency slice)
+        if is_z_params {
+            params * &scaling_2d
+        } else {
+            params / &scaling_2d
         }
-        result
     }
 
     /// Get the number of ports

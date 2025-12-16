@@ -144,16 +144,31 @@ impl Network {
     ///
     /// `from_ports` and `to_ports` specify the port renumbering.
     /// For example, renumber(&[0,1], &[1,0]) swaps ports 0 and 1.
-    pub fn renumbered(&self, from_ports: &[usize], to_ports: &[usize]) -> Option<Network> {
+    pub fn renumbered(&self, from_ports: &[usize], to_ports: &[usize]) -> Result<Network> {
         let nports = self.nports();
-        if from_ports.len() != to_ports.len() || from_ports.len() != nports {
-            return None;
+        if from_ports.len() != to_ports.len() {
+            bail!(
+                "from_ports length ({}) != to_ports length ({})",
+                from_ports.len(),
+                to_ports.len()
+            );
+        }
+        if from_ports.len() != nports {
+            bail!(
+                "mapping length ({}) != network ports ({})",
+                from_ports.len(),
+                nports
+            );
         }
 
         // Validate port indices
         for &p in from_ports.iter().chain(to_ports.iter()) {
             if p >= nports {
-                return None;
+                bail!(
+                    "port index {} out of range (network has {} ports)",
+                    p,
+                    nports
+                );
             }
         }
 
@@ -179,25 +194,29 @@ impl Network {
             z0_new[i] = self.z0[mapping[i]];
         }
 
-        Some(Network::new(self.frequency.clone(), s_new, z0_new))
+        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
     }
 
     /// Extract a subnetwork with specified ports
     ///
     /// Creates a new network containing only the specified ports.
     /// Port indices are 0-based.
-    pub fn subnetwork(&self, ports: &[usize]) -> Option<Network> {
+    pub fn subnetwork(&self, ports: &[usize]) -> Result<Network> {
         let nports = self.nports();
         let new_nports = ports.len();
 
         if new_nports == 0 {
-            return None;
+            bail!("subnetwork requires at least one port");
         }
 
         // Validate port indices
         for &p in ports {
             if p >= nports {
-                return None;
+                bail!(
+                    "port index {} out of range (network has {} ports)",
+                    p,
+                    nports
+                );
             }
         }
 
@@ -214,7 +233,7 @@ impl Network {
             }
         }
 
-        Some(Network::new(self.frequency.clone(), s_new, z0_new))
+        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
     }
 }
 

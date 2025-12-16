@@ -6,6 +6,7 @@
 //! - Filipsson, Gunnar, "A New General Computer Algorithm for S-Matrix Calculation
 //!   of Interconnected Multiports", 11th European Microwave Conference, 1981.
 
+use anyhow::{bail, Result};
 use ndarray::Array3;
 use num_complex::Complex64;
 
@@ -24,12 +25,18 @@ use crate::constants::NEAR_ZERO;
 ///
 /// # Returns
 /// New S-parameter matrix with 2 fewer ports
-pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Option<Array3<Complex64>> {
+pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Result<Array3<Complex64>> {
     let nfreq = a.shape()[0];
     let nports = a.shape()[1];
 
-    if k >= nports || l >= nports || k == l {
-        return None;
+    if k >= nports {
+        bail!("port k={} out of range (network has {} ports)", k, nports);
+    }
+    if l >= nports {
+        bail!("port l={} out of range (network has {} ports)", l, nports);
+    }
+    if k == l {
+        bail!("cannot connect port {} to itself", k);
     }
 
     // External ports (all ports except k and l)
@@ -37,7 +44,7 @@ pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Option<Array
     let n_ext = ext_ports.len();
 
     if n_ext == 0 {
-        return None; // Can't connect both ports of a 2-port
+        bail!("cannot connect both ports of a 2-port network");
     }
 
     let mut c = Array3::<Complex64>::zeros((nfreq, n_ext, n_ext));
@@ -52,7 +59,7 @@ pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Option<Array
         // Determinant
         let det = akl * alk - akk * all;
         if det.norm() < NEAR_ZERO {
-            return None; // Singular matrix
+            bail!("singular connection matrix at frequency index {}", f);
         }
 
         // Calculate resultant S-parameters for external ports
@@ -75,7 +82,7 @@ pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Option<Array
         }
     }
 
-    Some(c)
+    Ok(c)
 }
 
 /// Connect two n-port networks' s-matrices together.
@@ -96,18 +103,29 @@ pub fn connect_s(
     k: usize,
     b: &Array3<Complex64>,
     l: usize,
-) -> Option<Array3<Complex64>> {
+) -> Result<Array3<Complex64>> {
     let nfreq = a.shape()[0];
     let nports_a = a.shape()[1];
     let nports_b = b.shape()[1];
 
-    if k >= nports_a || l >= nports_b {
-        return None;
+    if k >= nports_a {
+        bail!(
+            "port k={} out of range (network A has {} ports)",
+            k,
+            nports_a
+        );
+    }
+    if l >= nports_b {
+        bail!(
+            "port l={} out of range (network B has {} ports)",
+            l,
+            nports_b
+        );
     }
 
     // Frequency dimension must match
     if b.shape()[0] != nfreq {
-        return None;
+        bail!("frequency count mismatch: {} vs {}", nfreq, b.shape()[0]);
     }
 
     // Create composite matrix by placing A and B diagonally
@@ -137,7 +155,7 @@ impl Network {
     /// Connect two ports of this network together (innerconnect)
     ///
     /// Connects port `k` to port `l`, resulting in a (nports-2)-port network.
-    pub fn innerconnect(&self, k: usize, l: usize) -> Option<Network> {
+    pub fn innerconnect(&self, k: usize, l: usize) -> Result<Network> {
         let s_new = innerconnect_s(&self.s, k, l)?;
         let nports_new = s_new.shape()[1];
 
@@ -150,16 +168,20 @@ impl Network {
         }
         let z0_new = ndarray::Array1::from_vec(z0_vec);
 
-        Some(Network::new(self.frequency.clone(), s_new, z0_new))
+        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
     }
 
     /// Connect this network's port `k` to another network's port `l`
     ///
     /// Returns a new network with (nports_self + nports_other - 2) ports.
-    pub fn connect(&self, k: usize, other: &Network, l: usize) -> Option<Network> {
+    pub fn connect(&self, k: usize, other: &Network, l: usize) -> Result<Network> {
         // Check frequency compatibility
         if self.nfreq() != other.nfreq() {
-            return None;
+            bail!(
+                "frequency count mismatch: {} vs {}",
+                self.nfreq(),
+                other.nfreq()
+            );
         }
 
         let s_new = connect_s(&self.s, k, &other.s, l)?;
@@ -179,7 +201,7 @@ impl Network {
         }
         let z0_new = ndarray::Array1::from_vec(z0_vec);
 
-        Some(Network::new(self.frequency.clone(), s_new, z0_new))
+        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
     }
 }
 
@@ -205,9 +227,9 @@ mod tests {
 
         // Connect port 1 of thru to port 0 of thru2
         let result = thru.connect(1, &thru2, 0);
-        assert!(result.is_some());
+        assert!(result.is_ok());
 
-        let connected = result.unwrap();
+        let connected = result.expect("Connect failed");
         assert_eq!(connected.nports(), 2);
 
         // Should still be approximately a thru
