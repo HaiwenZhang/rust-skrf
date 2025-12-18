@@ -552,27 +552,49 @@ pub fn passivity_enforce(
         }
 
         // Fit violation residues using least squares
-        // Simplified: directly update C_t based on violation
-        // This is a simplified version; full implementation would use _fit_residues
+        // For each response (i, j), we solve:
+        // sum_k Delta_C_{i, j*model_order + k} * coeffs[f, j*model_order + k, j] = Delta_S_{i, j}[f]
         for i in 0..nports {
             for j in 0..nports {
-                let mut update = 0.0;
+                let mut lapack_a = Vec::with_capacity(n_samples * 2 * model_order);
+                let mut lapack_b = Vec::with_capacity(n_samples * 2);
                 let mut count = 0;
-                use super::constants::{PASSIVITY_DAMPING_FACTOR, VIOLATION_TOLERANCE};
+
+                use super::constants::VIOLATION_TOLERANCE;
                 for f_idx in 0..n_samples {
                     let viol = s_viol[[f_idx, i, j]];
                     if viol.norm() > VIOLATION_TOLERANCE {
-                        update += viol.re;
                         count += 1;
+                        let offset = j * model_order;
+
+                        // Real part equation
+                        for k in 0..model_order {
+                            let coeff = coeffs[[f_idx, offset + k, j]];
+                            lapack_a.push(coeff.re);
+                        }
+                        lapack_b.push(viol.re);
+
+                        // Imaginary part equation
+                        for k in 0..model_order {
+                            let coeff = coeffs[[f_idx, offset + k, j]];
+                            lapack_a.push(coeff.im);
+                        }
+                        lapack_b.push(viol.im);
                     }
                 }
+
                 if count > 0 {
-                    // Simple averaging perturbation
-                    let perturbation = update / count as f64 * PASSIVITY_DAMPING_FACTOR;
-                    for k in 0..model_order {
-                        let idx = j * model_order + k;
-                        if idx < c_t.ncols() {
-                            c_t[[i, idx]] -= perturbation;
+                    // Solve least squares
+                    let a_mat = Array2::from_shape_vec((count * 2, model_order), lapack_a).unwrap();
+                    let b_vec = Array1::from_vec(lapack_b);
+
+                    if let Ok(result) = linalg::lstsq(&a_mat, &b_vec) {
+                        use super::constants::PASSIVITY_DAMPING_FACTOR;
+                        for (k, &perturbation) in result.solution.iter().enumerate() {
+                            let idx = j * model_order + k;
+                            if idx < c_t.ncols() {
+                                c_t[[i, idx]] -= perturbation * PASSIVITY_DAMPING_FACTOR;
+                            }
                         }
                     }
                 }
