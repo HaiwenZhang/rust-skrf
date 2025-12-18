@@ -62,25 +62,28 @@ fn test_ringslot_with_proportional() {
             return;
         }
     };
-    
+
     let mut vf = VectorFitting::new();
-    
+
     // Python: n_poles_real=2, n_poles_cmplx=0, fit_proportional=True, fit_constant=True
     let result = vf.vector_fit(
         &nw,
-        2,                          // n_poles_real
-        0,                          // n_poles_cmplx
+        2, // n_poles_real
+        0, // n_poles_cmplx
         InitPoleSpacing::Linear,
-        true,                       // fit_constant
-        true,                       // fit_proportional
+        true, // fit_constant
+        true, // fit_proportional
     );
 
     assert!(result.is_ok(), "Vector fit should succeed");
-    
+
     // Python threshold: 0.02
     if let Some(rms) = vf.get_rms_error(&nw, 0, 0) {
-        assert!(rms < 0.02, 
-            "RMS error should be less than 0.02 (Python threshold), got {}", rms);
+        assert!(
+            rms < 0.02,
+            "RMS error should be less than 0.02 (Python threshold), got {}",
+            rms
+        );
     }
 }
 
@@ -95,25 +98,28 @@ fn test_ringslot_default_log() {
             return;
         }
     };
-    
+
     let mut vf = VectorFitting::new();
 
     // Python: n_poles_real=4, n_poles_cmplx=0, init_pole_spacing='log'
     let result = vf.vector_fit(
         &nw,
-        4,                          // n_poles_real
-        0,                          // n_poles_cmplx
+        4, // n_poles_real
+        0, // n_poles_cmplx
         InitPoleSpacing::Logarithmic,
-        true,                       // fit_constant
-        false,                      // fit_proportional
+        true,  // fit_constant
+        false, // fit_proportional
     );
 
     assert!(result.is_ok(), "Vector fit with log spacing should succeed");
-    
+
     // Python threshold: 0.01
     if let Some(rms) = vf.get_rms_error(&nw, 0, 0) {
-        assert!(rms < 0.01, 
-            "RMS error should be less than 0.01 (Python threshold), got {}", rms);
+        assert!(
+            rms < 0.01,
+            "RMS error should be less than 0.01 (Python threshold), got {}",
+            rms
+        );
     }
 }
 
@@ -128,25 +134,31 @@ fn test_ringslot_without_prop_const() {
             return;
         }
     };
-    
+
     let mut vf = VectorFitting::new();
 
     // Python: n_poles_real=4, n_poles_cmplx=0, fit_proportional=False, fit_constant=False
     let result = vf.vector_fit(
         &nw,
-        4,                          // n_poles_real
-        0,                          // n_poles_cmplx
+        4, // n_poles_real
+        0, // n_poles_cmplx
         InitPoleSpacing::Linear,
-        false,                      // fit_constant
-        false,                      // fit_proportional
+        false, // fit_constant
+        false, // fit_proportional
     );
 
-    assert!(result.is_ok(), "Vector fit without const/prop should succeed");
-    
+    assert!(
+        result.is_ok(),
+        "Vector fit without const/prop should succeed"
+    );
+
     // Python threshold: 0.01
     if let Some(rms) = vf.get_rms_error(&nw, 0, 0) {
-        assert!(rms < 0.01, 
-            "RMS error should be less than 0.01 (Python threshold), got {}", rms);
+        assert!(
+            rms < 0.01,
+            "RMS error should be less than 0.01 (Python threshold), got {}",
+            rms
+        );
     }
 }
 
@@ -163,18 +175,21 @@ fn test_get_model_order() {
     // Fit with known pole count: 2 real + 2 complex = 2 + 2*2 = 6
     let result = vf.vector_fit(
         &nw,
-        2,                          // n_poles_real
-        2,                          // n_poles_cmplx
+        2, // n_poles_real
+        2, // n_poles_cmplx
         InitPoleSpacing::Linear,
         true,
         false,
     );
 
     assert!(result.is_ok());
-    
+
     if let Some(order) = vf.get_model_order() {
         // Model order = n_real + 2 * n_complex = 2 + 2*2 = 6
-        assert_eq!(order, 6, "Model order should be 6 for 2 real + 2 complex poles");
+        assert_eq!(
+            order, 6,
+            "Model order should be 6 for 2 real + 2 complex poles"
+        );
     }
 }
 
@@ -186,15 +201,15 @@ fn test_get_model_order_real_only() {
 
     let result = vf.vector_fit(
         &nw,
-        3,                          // n_poles_real
-        0,                          // n_poles_cmplx
+        3, // n_poles_real
+        0, // n_poles_cmplx
         InitPoleSpacing::Linear,
         true,
         false,
     );
 
     assert!(result.is_ok());
-    
+
     if let Some(order) = vf.get_model_order() {
         assert_eq!(order, 3, "Model order should be 3 for 3 real poles");
     }
@@ -208,15 +223,15 @@ fn test_get_model_order_complex_only() {
 
     let result = vf.vector_fit(
         &nw,
-        0,                          // n_poles_real
-        3,                          // n_poles_cmplx
+        0, // n_poles_real
+        3, // n_poles_cmplx
         InitPoleSpacing::Linear,
         true,
         false,
     );
 
     assert!(result.is_ok());
-    
+
     if let Some(order) = vf.get_model_order() {
         // Model order = 2 * n_complex = 2*3 = 6
         assert_eq!(order, 6, "Model order should be 6 for 3 complex poles");
@@ -233,14 +248,7 @@ fn test_get_model_response() {
     let nw = create_simple_1port();
     let mut vf = VectorFitting::new();
 
-    let result = vf.vector_fit(
-        &nw,
-        2,
-        1,
-        InitPoleSpacing::Linear,
-        true,
-        false,
-    );
+    let result = vf.vector_fit(&nw, 2, 1, InitPoleSpacing::Linear, true, false);
 
     assert!(result.is_ok());
 
@@ -249,14 +257,20 @@ fn test_get_model_response() {
     let response = vf.get_model_response(0, 0, &freqs);
 
     assert!(response.is_some(), "Model response should be computable");
-    
+
     if let Some(resp) = response {
-        assert_eq!(resp.len(), freqs.len(), "Response should have same length as freqs");
-        
+        assert_eq!(
+            resp.len(),
+            freqs.len(),
+            "Response should have same length as freqs"
+        );
+
         // All values should be finite
         for val in resp.iter() {
-            assert!(val.re.is_finite() && val.im.is_finite(), 
-                    "Model response should be finite");
+            assert!(
+                val.re.is_finite() && val.im.is_finite(),
+                "Model response should be finite"
+            );
         }
     }
 }
@@ -271,20 +285,13 @@ fn test_get_rms_error() {
     let nw = create_simple_1port();
     let mut vf = VectorFitting::new();
 
-    let result = vf.vector_fit(
-        &nw,
-        3,
-        1,
-        InitPoleSpacing::Linear,
-        true,
-        false,
-    );
+    let result = vf.vector_fit(&nw, 3, 1, InitPoleSpacing::Linear, true, false);
 
     assert!(result.is_ok());
 
     let rms = vf.get_rms_error(&nw, 0, 0);
     assert!(rms.is_some(), "RMS error should be computable");
-    
+
     if let Some(err) = rms {
         // RMS error should be positive and finite
         assert!(err >= 0.0, "RMS error should be non-negative");
@@ -300,9 +307,12 @@ fn test_get_rms_error() {
 #[test]
 fn test_before_fit() {
     let vf = VectorFitting::new();
-    
+
     // Model order should be None before fitting
-    assert!(vf.get_model_order().is_none(), "Model order should be None before fit");
+    assert!(
+        vf.get_model_order().is_none(),
+        "Model order should be None before fit"
+    );
 }
 
 /// Test fitting with file-loaded network
@@ -310,21 +320,14 @@ fn test_before_fit() {
 fn test_fit_from_file() {
     let path = format!("{}/ntwk1.s2p", TEST_DATA_DIR);
     let nw_result = Network::from_touchstone(&path);
-    
+
     if let Ok(nw) = nw_result {
         let mut vf = VectorFitting::new();
-        
-        let result = vf.vector_fit(
-            &nw,
-            2,
-            2,
-            InitPoleSpacing::Linear,
-            true,
-            false,
-        );
+
+        let result = vf.vector_fit(&nw, 2, 2, InitPoleSpacing::Linear, true, false);
 
         assert!(result.is_ok(), "Fitting file-loaded network should succeed");
-        
+
         if let Some(order) = vf.get_model_order() {
             assert!(order > 0, "Model order should be positive");
         }

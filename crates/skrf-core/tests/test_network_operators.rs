@@ -20,7 +20,13 @@ use skrf_core::network::Network;
 /// Helper to create 1-port test networks
 fn create_1port_network(s_values: &[Complex64]) -> Network {
     let nfreq = s_values.len();
-    let freq = Frequency::new(1.0, nfreq as f64, nfreq, FrequencyUnit::GHz, SweepType::Linear);
+    let freq = Frequency::new(
+        1.0,
+        nfreq as f64,
+        nfreq,
+        FrequencyUnit::GHz,
+        SweepType::Linear,
+    );
     let mut s = Array3::<Complex64>::zeros((nfreq, 1, 1));
     for (f, &val) in s_values.iter().enumerate() {
         s[[f, 0, 0]] = val;
@@ -35,10 +41,7 @@ fn create_1port_network(s_values: &[Complex64]) -> Network {
 
 #[test]
 fn test_mul_scalar_f64() {
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 2.0),
-        Complex64::new(3.0, 4.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 2.0), Complex64::new(3.0, 4.0)]);
 
     let result = &a * 2.0;
 
@@ -53,10 +56,7 @@ fn test_mul_scalar_f64() {
 
 #[test]
 fn test_mul_scalar_complex() {
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 2.0),
-        Complex64::new(3.0, 4.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 2.0), Complex64::new(3.0, 4.0)]);
 
     let scalar = Complex64::new(2.0, 0.0);
     let result = &a * scalar;
@@ -68,9 +68,7 @@ fn test_mul_scalar_complex() {
 
 #[test]
 fn test_mul_scalar_complex_imaginary() {
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 0.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 0.0)]);
 
     // Multiply by j
     let scalar = Complex64::new(0.0, 1.0);
@@ -88,10 +86,7 @@ fn test_mul_scalar_complex_imaginary() {
 #[test]
 fn test_sub_networks() {
     // a - a should give zero
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 2.0),
-        Complex64::new(3.0, 4.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 2.0), Complex64::new(3.0, 4.0)]);
 
     let result = (&a - &a).expect("Subtraction failed");
 
@@ -119,10 +114,7 @@ fn test_sub_networks_different() {
 
 #[test]
 fn test_div_scalar_f64() {
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 2.0),
-        Complex64::new(3.0, 4.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 2.0), Complex64::new(3.0, 4.0)]);
 
     let result = &a / 2.0;
 
@@ -137,9 +129,7 @@ fn test_div_scalar_f64() {
 
 #[test]
 fn test_div_scalar_complex() {
-    let a = create_1port_network(&[
-        Complex64::new(2.0, 0.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(2.0, 0.0)]);
 
     // Divide by (1+1j)
     let scalar = Complex64::new(1.0, 1.0);
@@ -157,10 +147,7 @@ fn test_div_scalar_complex() {
 #[test]
 fn test_add_networks() {
     // a + a should give 2*a
-    let a = create_1port_network(&[
-        Complex64::new(1.0, 2.0),
-        Complex64::new(3.0, 4.0),
-    ]);
+    let a = create_1port_network(&[Complex64::new(1.0, 2.0), Complex64::new(3.0, 4.0)]);
 
     let result = (&a + &a).expect("Addition failed");
 
@@ -225,8 +212,16 @@ fn test_combined_operations() {
     let result1 = &sum * 0.5;
     let result2 = &sum / 2.0;
 
-    assert_relative_eq!(result1.s()[[0, 0, 0]].re, result2.s()[[0, 0, 0]].re, epsilon = 1e-10);
-    assert_relative_eq!(result1.s()[[0, 0, 0]].im, result2.s()[[0, 0, 0]].im, epsilon = 1e-10);
+    assert_relative_eq!(
+        result1.s()[[0, 0, 0]].re,
+        result2.s()[[0, 0, 0]].re,
+        epsilon = 1e-10
+    );
+    assert_relative_eq!(
+        result1.s()[[0, 0, 0]].im,
+        result2.s()[[0, 0, 0]].im,
+        epsilon = 1e-10
+    );
 
     // (2+4j) + (4+2j) = 6+6j, divided by 2 = 3+3j
     assert_relative_eq!(result1.s()[[0, 0, 0]].re, 3.0, epsilon = 1e-10);

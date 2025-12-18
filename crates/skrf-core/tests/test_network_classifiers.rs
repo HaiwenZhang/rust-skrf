@@ -31,9 +31,21 @@ fn test_is_reciprocal_circulator() {
     // A circulator is NOT reciprocal
     // S = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
     let s_matrix = vec![
-        vec![Complex64::new(0.0, 0.0), Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)],
-        vec![Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0), Complex64::new(1.0, 0.0)],
-        vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)],
+        vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 0.0),
+        ],
+        vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(1.0, 0.0),
+        ],
+        vec![
+            Complex64::new(1.0, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.0, 0.0),
+        ],
     ];
     let ntwk = create_network_from_s(s_matrix);
 
@@ -45,9 +57,21 @@ fn test_is_reciprocal_power_divider() {
     // A reciprocal power divider: S_ij = S_ji
     // S = [[0, 0.5, 0.5], [0.5, 0, 0.5], [0.5, 0.5, 0]]
     let s_matrix = vec![
-        vec![Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0)],
+        vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+        ],
     ];
     let ntwk = create_network_from_s(s_matrix);
 
@@ -62,9 +86,21 @@ fn test_is_reciprocal_power_divider() {
 fn test_is_passive_power_divider() {
     // A passive power divider: |S_ij| <= 1 for all i,j
     let s_matrix = vec![
-        vec![Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0)],
+        vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+        ],
     ];
     let ntwk = create_network_from_s(s_matrix);
 
@@ -76,11 +112,14 @@ fn test_is_passive_amplifier() {
     // A unilateral amplifier is NOT passive: |S21| > 1
     let s_matrix = vec![
         vec![Complex64::new(0.0, 0.0), Complex64::new(0.0, 0.0)],
-        vec![Complex64::new(10.0, 0.0), Complex64::new(0.0, 0.0)],  // S21 = 10 (20dB gain)
+        vec![Complex64::new(10.0, 0.0), Complex64::new(0.0, 0.0)], // S21 = 10 (20dB gain)
     ];
     let ntwk = create_network_from_s(s_matrix);
 
-    assert!(!ntwk.is_passive(None), "A unilateral amplifier is not passive");
+    assert!(
+        !ntwk.is_passive(None),
+        "A unilateral amplifier is not passive"
+    );
 }
 
 // ============================================================================
@@ -91,13 +130,28 @@ fn test_is_passive_amplifier() {
 fn test_is_lossless_resistive_divider() {
     // A resistive power divider is lossy (not lossless)
     let s_matrix = vec![
-        vec![Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0), Complex64::new(0.5, 0.0)],
-        vec![Complex64::new(0.5, 0.0), Complex64::new(0.5, 0.0), Complex64::new(0.0, 0.0)],
+        vec![
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+            Complex64::new(0.5, 0.0),
+        ],
+        vec![
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.5, 0.0),
+            Complex64::new(0.0, 0.0),
+        ],
     ];
     let ntwk = create_network_from_s(s_matrix);
 
-    assert!(!ntwk.is_lossless(None), "A resistive power divider is lossy");
+    assert!(
+        !ntwk.is_lossless(None),
+        "A resistive power divider is lossy"
+    );
 }
 
 #[test]
@@ -124,7 +178,10 @@ fn test_is_lossless_ideal_divider() {
     ];
     let ntwk = create_network_from_s(s_matrix);
 
-    assert!(ntwk.is_lossless(None), "This unmatched power divider is lossless");
+    assert!(
+        ntwk.is_lossless(None),
+        "This unmatched power divider is lossless"
+    );
 }
 
 // ============================================================================

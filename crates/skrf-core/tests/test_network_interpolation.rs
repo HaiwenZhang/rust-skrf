@@ -63,11 +63,20 @@ fn test_network_crop_frequency() {
     let cropped = ntwk.cropped(f_start, f_mid);
 
     // Cropped network should have fewer frequency points
-    assert!(cropped.nfreq() < ntwk.nfreq(), "Cropped should have fewer points");
-    assert!(cropped.nfreq() > 0, "Cropped should have at least one point");
-    assert_eq!(cropped.nports(), ntwk.nports(), "Cropped should have same ports");
+    assert!(
+        cropped.nfreq() < ntwk.nfreq(),
+        "Cropped should have fewer points"
+    );
+    assert!(
+        cropped.nfreq() > 0,
+        "Cropped should have at least one point"
+    );
+    assert_eq!(
+        cropped.nports(),
+        ntwk.nports(),
+        "Cropped should have same ports"
+    );
 }
-
 
 // ============================================================================
 // Interpolation Quality Tests

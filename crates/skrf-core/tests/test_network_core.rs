@@ -77,10 +77,7 @@ fn test_constructor_from_values() {
     let mut s = Array3::<Complex64>::zeros((2, 2, 2));
     s[[0, 0, 0]] = Complex64::new(1.0, 2.0);
     s[[1, 0, 0]] = Complex64::new(3.0, 4.0);
-    let z0 = Array1::from_vec(vec![
-        Complex64::new(50.0, 0.0),
-        Complex64::new(75.0, 0.0),
-    ]);
+    let z0 = Array1::from_vec(vec![Complex64::new(50.0, 0.0), Complex64::new(75.0, 0.0)]);
     let ntwk = Network::new(freq, s, z0);
 
     assert_eq!(ntwk.nports(), 2);
@@ -206,9 +203,7 @@ fn test_flip() {
 #[test]
 fn test_renumber() {
     let ntwk = create_test_network();
-    let renumbered = ntwk
-        .renumbered(&[0, 1], &[1, 0])
-        .expect("Renumber failed");
+    let renumbered = ntwk.renumbered(&[0, 1], &[1, 0]).expect("Renumber failed");
 
     // Renumber [0,1] -> [1,0] should swap ports like flip
     for f in 0..ntwk.nfreq() {
@@ -231,7 +226,9 @@ fn test_subnetwork() {
     let ntwk4 = Network::from_touchstone(&path).expect("Failed to load cst_example_4ports.s4p");
 
     // Extract ports 0 and 1
-    let sub = ntwk4.subnetwork(&[0, 1]).expect("Subnetwork extraction failed");
+    let sub = ntwk4
+        .subnetwork(&[0, 1])
+        .expect("Subnetwork extraction failed");
 
     assert_eq!(sub.nports(), 2);
     assert_eq!(sub.nfreq(), ntwk4.nfreq());

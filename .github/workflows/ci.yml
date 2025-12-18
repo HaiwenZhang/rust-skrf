@@ -63,8 +63,9 @@ jobs:
             ${{ runner.os }}-cargo-clippy-
             ${{ runner.os }}-cargo-
 
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      # skrf-python is a PyO3 extension module, requires maturin to build
+      - name: Run Clippy (excluding skrf-python)
+        run: cargo clippy -p skrf-core -p skrf-wasm --all-targets --all-features -- -D warnings
 
   # ==========================================================================
   # Test Suite - Multi-platform
@@ -81,11 +82,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -101,11 +97,12 @@ jobs:
             ${{ runner.os }}-cargo-test-
             ${{ runner.os }}-cargo-
 
-      - name: Build
-        run: cargo build --workspace --all-features
+      # skrf-python is a PyO3 extension module, requires maturin to build
+      - name: Build (excluding skrf-python)
+        run: cargo build -p skrf-core -p skrf-wasm --all-features
 
-      - name: Run tests
-        run: cargo test --workspace --all-features --no-fail-fast
+      - name: Run tests (excluding skrf-python)
+        run: cargo test -p skrf-core -p skrf-wasm --all-features --no-fail-fast
 
   # ==========================================================================
   # skrf-core Tests (Core library, no Python/WASM deps)
@@ -139,6 +136,55 @@ jobs:
         run: cargo test -p skrf-core --doc
 
   # ==========================================================================
+  # Python Bindings Test (skrf-python with maturin)
+  # ==========================================================================
+  test-python:
+    name: Test Python (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-python-
+            ${{ runner.os }}-cargo-
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build Python bindings
+        run: maturin build --release
+        working-directory: crates/skrf-python
+
+      - name: Install Python bindings
+        run: pip install target/wheels/*.whl
+        shell: bash
+
+      - name: Verify Python import
+        run: python -c "import skrf_python; print('skrf_python imported successfully')"
+
+  # ==========================================================================
   # Documentation Build
   # ==========================================================================
   docs:
@@ -163,8 +209,9 @@ jobs:
             ${{ runner.os }}-cargo-docs-
             ${{ runner.os }}-cargo-
 
-      - name: Build documentation
-        run: cargo doc --workspace --no-deps --all-features
+      # skrf-python is a PyO3 extension module, requires maturin to build
+      - name: Build documentation (excluding skrf-python)
+        run: cargo doc -p skrf-core -p skrf-wasm --no-deps --all-features
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -201,7 +248,7 @@ jobs:
   # ==========================================================================
   ci-success:
     name: CI Success
-    needs: [fmt, clippy, test, test-core, docs]
+    needs: [fmt, clippy, test, test-core, test-python, docs]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -211,6 +258,7 @@ jobs:
              [[ "${{ needs.clippy.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.test-core.result }}" != "success" ]] || \
+             [[ "${{ needs.test-python.result }}" != "success" ]] || \
              [[ "${{ needs.docs.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
