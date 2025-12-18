@@ -2,11 +2,25 @@
 //!
 //! Provides conversions between S, Z, Y, T, and ABCD parameters.
 
-use ndarray::{Array1, Array2, Array3};
+use ndarray::{Array1, Array2, Array3, Zip};
 use num_complex::Complex64;
 
+#[cfg(feature = "parallel")]
+use ndarray::parallel::prelude::*;
+
 use crate::constants::NEAR_ZERO;
-use crate::math::matrix_ops::{inv_sqrt_z0_matrix, sqrt_z0_matrix, z0_diag_matrix};
+use crate::math::matrix_ops::{
+    inv_sqrt_z0_matrix, invert_2x2_simd, mul_2x2_simd, sqrt_z0_matrix, z0_diag_matrix,
+};
+
+macro_rules! par_or_seq {
+    ($zip:expr, $f:expr) => {
+        #[cfg(feature = "parallel")]
+        $zip.par_for_each($f);
+        #[cfg(not(feature = "parallel"))]
+        $zip.for_each($f);
+    };
+}
 
 /// Convert S-parameters to Z-parameters
 ///
@@ -23,18 +37,26 @@ pub fn s2z(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     let identity = Array2::<Complex64>::eye(nports);
     let f_mat = sqrt_z0_matrix(z0);
 
-    for f in 0..nfreq {
-        let s_f = s.slice(ndarray::s![f, .., ..]);
+    let zip = Zip::from(z.outer_iter_mut()).and(s.outer_iter());
+
+    par_or_seq!(zip, |mut z_f, s_f| {
         let i_plus_s = &identity + &s_f;
         let i_minus_s = &identity - &s_f;
 
-        // Z = F * (I + S) * inv(I - S) * F
-        if let Some(inv_i_minus_s) = invert_matrix(&i_minus_s.to_owned()) {
-            let term = i_plus_s.dot(&inv_i_minus_s);
-            let z_f = f_mat.dot(&term).dot(&f_mat);
-            z.slice_mut(ndarray::s![f, .., ..]).assign(&z_f);
+        if nports == 2 {
+            if let Some(inv_i_minus_s) = invert_2x2_simd(&i_minus_s.to_owned()) {
+                let term = mul_2x2_simd(&i_plus_s.to_owned(), &inv_i_minus_s);
+                let z_f_val = mul_2x2_simd(&mul_2x2_simd(&f_mat, &term), &f_mat);
+                z_f.assign(&z_f_val);
+            }
+        } else {
+            if let Some(inv_i_minus_s) = invert_matrix(&i_minus_s.to_owned()) {
+                let term = i_plus_s.dot(&inv_i_minus_s);
+                let z_f_val = f_mat.dot(&term).dot(&f_mat);
+                z_f.assign(&z_f_val);
+            }
         }
-    }
+    });
 
     z
 }
@@ -54,19 +76,26 @@ pub fn z2s(z: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     let inv_f_mat = inv_sqrt_z0_matrix(z0);
     let z0_diag = z0_diag_matrix(z0);
 
-    for f in 0..nfreq {
-        let z_f = z.slice(ndarray::s![f, .., ..]);
+    let zip = Zip::from(s.outer_iter_mut()).and(z.outer_iter());
 
+    par_or_seq!(zip, |mut s_f, z_f| {
         let z_minus_z0 = &z_f - &z0_diag;
         let z_plus_z0 = &z_f + &z0_diag;
 
-        if let Some(inv_term) = invert_matrix(&z_plus_z0.to_owned()) {
-            let term = z_minus_z0.dot(&inv_term);
-            // S = F^-1 * Term * F
-            let s_f = inv_f_mat.dot(&term).dot(&f_mat);
-            s.slice_mut(ndarray::s![f, .., ..]).assign(&s_f);
+        if nports == 2 {
+            if let Some(inv_term) = invert_2x2_simd(&z_plus_z0.to_owned()) {
+                let term = mul_2x2_simd(&z_minus_z0.to_owned(), &inv_term);
+                let s_f_val = mul_2x2_simd(&mul_2x2_simd(&inv_f_mat, &term), &f_mat);
+                s_f.assign(&s_f_val);
+            }
+        } else {
+            if let Some(inv_term) = invert_matrix(&z_plus_z0.to_owned()) {
+                let term = z_minus_z0.dot(&inv_term);
+                let s_f_val = inv_f_mat.dot(&term).dot(&f_mat);
+                s_f.assign(&s_f_val);
+            }
         }
-    }
+    });
 
     s
 }
@@ -88,18 +117,26 @@ pub fn s2y(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
     // G matrix (1/sqrt(z0))
     let g_mat = inv_sqrt_z0_matrix(z0);
 
-    for f in 0..nfreq {
-        let s_f = s.slice(ndarray::s![f, .., ..]);
+    let zip = Zip::from(y.outer_iter_mut()).and(s.outer_iter());
+
+    par_or_seq!(zip, |mut y_f, s_f| {
         let i_minus_s = &identity - &s_f;
         let i_plus_s = &identity + &s_f;
 
-        if let Some(inv_i_plus_s) = invert_matrix(&i_plus_s.to_owned()) {
-            let term = i_minus_s.dot(&inv_i_plus_s);
-            // Y = G * Term * G
-            let y_f = g_mat.dot(&term).dot(&g_mat);
-            y.slice_mut(ndarray::s![f, .., ..]).assign(&y_f);
+        if nports == 2 {
+            if let Some(inv_i_plus_s) = invert_2x2_simd(&i_plus_s.to_owned()) {
+                let term = mul_2x2_simd(&i_minus_s.to_owned(), &inv_i_plus_s);
+                let y_f_val = mul_2x2_simd(&mul_2x2_simd(&g_mat, &term), &g_mat);
+                y_f.assign(&y_f_val);
+            }
+        } else {
+            if let Some(inv_i_plus_s) = invert_matrix(&i_plus_s.to_owned()) {
+                let term = i_minus_s.dot(&inv_i_plus_s);
+                let y_f_val = g_mat.dot(&term).dot(&g_mat);
+                y_f.assign(&y_f_val);
+            }
         }
-    }
+    });
 
     y
 }

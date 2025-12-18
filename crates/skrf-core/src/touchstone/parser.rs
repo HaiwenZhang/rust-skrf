@@ -91,6 +91,8 @@ pub struct Touchstone {
     pub param_type: ParameterType,
     /// Is this a Version 2.0 file?
     pub is_v2: bool,
+    /// Mixed-mode order (if specified)
+    pub mixed_mode_order: Vec<String>,
 }
 
 impl Touchstone {
@@ -185,6 +187,12 @@ impl Touchstone {
                 continue;
             }
 
+            // Handle continuation of mixed-mode order
+            if state.expecting_mixed_mode_order {
+                state.check_expecting_mixed_mode_order(trimmed);
+                continue;
+            }
+
             // Parse data line
             // Check if we are in a data section (implicit for v1, explicit for v2)
             // Or if the line looks like data (starts with number/sign) even if [Network Data] missing
@@ -272,7 +280,10 @@ struct ParserState {
     data_section_started: bool,
     two_port_order_21_12: bool, // Default is 12_21 (S11, S21, S12, S22)
     expecting_reference: bool,
+    expecting_mixed_mode_order: bool,
     noise_data_encountered: bool,
+    expected_nfreq: Option<usize>,
+    mixed_mode_order: Vec<String>,
 }
 
 impl ParserState {
@@ -294,7 +305,10 @@ impl ParserState {
             data_section_started: false,
             two_port_order_21_12: true, // Standard Touchstone 2-port order (x, S11, S21, S12, S22)
             expecting_reference: false,
+            expecting_mixed_mode_order: false,
             noise_data_encountered: false,
+            expected_nfreq: None,
+            mixed_mode_order: Vec::new(),
         }
     }
 
@@ -331,17 +345,18 @@ impl ParserState {
     fn parse_keyword(&mut self, line: &str) -> Result<(), TouchstoneError> {
         let line_lower = line.to_lowercase();
         if line_lower.starts_with("[version]") {
-            if let Some(v) = line.split_whitespace().nth(1) {
-                self.version = v.to_string();
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                self.version = parts[1].to_string();
                 if self.version != "1.0" {
                     self.is_v2 = true;
                 }
             }
         } else if line_lower.starts_with("[number of ports]") {
-            if let Some(n) = line.split_whitespace().nth(3) {
-                // keyword is [Number of Ports] <N> - index 3?
-                // [Number -> 0, of -> 1, Ports] -> 2. So index 3 is correct.
-                self.nports = n.parse().map_err(|_| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            // [Number, of, Ports], index 3 is nports
+            if parts.len() >= 4 {
+                self.nports = parts[3].parse().map_err(|_| {
                     TouchstoneError::InvalidOption("Invalid port number".to_string())
                 })?;
             }
@@ -372,6 +387,24 @@ impl ParserState {
             } else {
                 self.matrix_format = MatrixFormat::Full;
             }
+        } else if line_lower.starts_with("[number of frequencies]") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                if let Ok(n) = parts[3].parse() {
+                    self.expected_nfreq = Some(n);
+                    self.frequencies.reserve(n);
+                    self.s_data.reserve(n);
+                }
+            }
+        } else if line_lower.starts_with("[mixed-mode order]") {
+            let parts: Vec<&str> = line.split_whitespace().skip(2).collect();
+            // Keyword is [Mixed-Mode, Order], so skip 2
+            for part in parts {
+                self.mixed_mode_order.push(part.to_string());
+            }
+            if self.mixed_mode_order.len() < self.nports {
+                self.expecting_mixed_mode_order = true;
+            }
         } else if line_lower.starts_with("[network data]") {
             self.data_section_started = true;
         } else if line_lower.starts_with("[noise data]") {
@@ -394,8 +427,20 @@ impl ParserState {
                     self.z0.push(val);
                 }
             }
-            if self.z0.len() >= self.nports {
+            if self.z0.len() >= self.nports && self.nports > 0 {
                 self.expecting_reference = false;
+            }
+        }
+    }
+
+    fn check_expecting_mixed_mode_order(&mut self, line: &str) {
+        if self.expecting_mixed_mode_order {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            for part in parts {
+                self.mixed_mode_order.push(part.to_string());
+            }
+            if self.mixed_mode_order.len() >= self.nports && self.nports > 0 {
+                self.expecting_mixed_mode_order = false;
             }
         }
     }
@@ -563,6 +608,7 @@ impl ParserState {
             format: self.format,
             param_type: self.param_type,
             is_v2: self.is_v2,
+            mixed_mode_order: self.mixed_mode_order,
         })
     }
 }
@@ -602,5 +648,24 @@ mod tests {
         assert_eq!(SParamFormat::parse("ma"), Some(SParamFormat::MA));
         assert_eq!(SParamFormat::parse("DB"), Some(SParamFormat::DB));
         assert_eq!(SParamFormat::parse("invalid"), None);
+    }
+
+    #[test]
+    fn test_parse_v2_keywords() {
+        let content = "[Version] 2.0
+# MHz S RI R 50
+[Number of Ports] 2
+[Number of Frequencies] 1
+[Reference] 50 
+ 75
+[Mixed-Mode Order] D1,2
+ C1,2
+[Network Data]
+1.0 0.1 0.0 0.0 0.1 0.0 0.1 0.1 0.0";
+        let ts = Touchstone::from_str(content, 0).unwrap();
+        assert_eq!(ts.is_v2, true);
+        assert_eq!(ts.nports, 2);
+        assert_eq!(ts.z0, vec![50.0, 75.0]);
+        assert_eq!(ts.mixed_mode_order, vec!["D1,2", "C1,2"]);
     }
 }

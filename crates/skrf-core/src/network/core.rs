@@ -22,6 +22,8 @@ pub struct Network {
     pub name: Option<String>,
     /// Comments
     pub comments: Vec<String>,
+    /// Mixed-mode order (for TS 2.0)
+    pub mixed_mode_order: Vec<String>,
 }
 
 impl Network {
@@ -33,6 +35,7 @@ impl Network {
             z0,
             name: None,
             comments: Vec::new(),
+            mixed_mode_order: Vec::new(),
         }
     }
 
@@ -82,6 +85,7 @@ impl Network {
             z0,
             name: None,
             comments: ts.comments,
+            mixed_mode_order: ts.mixed_mode_order,
         }
     }
 

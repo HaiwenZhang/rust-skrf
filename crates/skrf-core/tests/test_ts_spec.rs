@@ -300,9 +300,10 @@ fn test_ts_example_16() {
     let path = format!("{}/ex_16.ts", TEST_DATA_DIR);
     let ts = Network::from_touchstone(&path).expect("Failed to load ex_16.ts");
 
-    // assert np.all(ts.port_modes == np.array(["S", "D", "C", "S", "D", "C"]))
-    // assert np.allclose(ts.z0, [50, 150, 37.5, 50, 0.02, 0.005])
+    assert_eq!(
+        ts.mixed_mode_order,
+        vec!["D2,3", "D6,5", "C2,3", "C6,5", "S4", "S1"]
+    );
 
-    // Features (port_modes, mixed_z0) not implemented.
     assert_eq!(ts.nports(), 6);
 }

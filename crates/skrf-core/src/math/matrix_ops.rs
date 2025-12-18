@@ -7,6 +7,7 @@ use ndarray::{Array2, Array3};
 use num_complex::Complex64;
 
 use crate::constants::NEAR_ZERO;
+use crate::math::simd::{ComplexSimd, SimdComplex};
 
 /// Create a diagonal matrix from an Array1 of values
 #[inline]
@@ -91,6 +92,62 @@ pub fn invert_2x2(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
     result[[0, 1]] = -b * inv_det;
     result[[1, 0]] = -c * inv_det;
     result[[1, 1]] = a * inv_det;
+    Some(result)
+}
+
+/// Multiply two 2x2 complex matrices using SIMD-ready primitives
+#[inline]
+pub fn mul_2x2_simd(a: &Array2<Complex64>, b: &Array2<Complex64>) -> Array2<Complex64> {
+    let a11 = SimdComplex::from_complex(a[[0, 0]]);
+    let a12 = SimdComplex::from_complex(a[[0, 1]]);
+    let a21 = SimdComplex::from_complex(a[[1, 0]]);
+    let a22 = SimdComplex::from_complex(a[[1, 1]]);
+
+    let b11 = SimdComplex::from_complex(b[[0, 0]]);
+    let b12 = SimdComplex::from_complex(b[[0, 1]]);
+    let b21 = SimdComplex::from_complex(b[[1, 0]]);
+    let b22 = SimdComplex::from_complex(b[[1, 1]]);
+
+    // c11 = a11*b11 + a12*b21
+    let c11 = a11.mul(b11).add(a12.mul(b21));
+    // c12 = a11*b12 + a12*b22
+    let c12 = a11.mul(b12).add(a12.mul(b22));
+    // c21 = a21*b11 + a22*b21
+    let c21 = a21.mul(b11).add(a22.mul(b21));
+    // c22 = a21*b12 + a22*b22
+    let c22 = a21.mul(b12).add(a22.mul(b22));
+
+    let mut result = Array2::<Complex64>::zeros((2, 2));
+    result[[0, 0]] = c11.to_complex();
+    result[[0, 1]] = c12.to_complex();
+    result[[1, 0]] = c21.to_complex();
+    result[[1, 1]] = c22.to_complex();
+    result
+}
+
+/// Invert a 2x2 complex matrix using SIMD-ready primitives
+#[inline]
+pub fn invert_2x2_simd(m: &Array2<Complex64>) -> Option<Array2<Complex64>> {
+    let a = SimdComplex::from_complex(m[[0, 0]]);
+    let b = SimdComplex::from_complex(m[[0, 1]]);
+    let c = SimdComplex::from_complex(m[[1, 0]]);
+    let d = SimdComplex::from_complex(m[[1, 1]]);
+
+    // det = ad - bc
+    let det = a.mul(d).sub(b.mul(c));
+    let det_c = det.to_complex();
+
+    if det_c.norm() < NEAR_ZERO {
+        return None;
+    }
+
+    let inv_det = SimdComplex::from_complex(Complex64::new(1.0, 0.0) / det_c);
+
+    let mut result = Array2::<Complex64>::zeros((2, 2));
+    result[[0, 0]] = d.mul(inv_det).to_complex();
+    result[[0, 1]] = SimdComplex::new(0.0, 0.0).sub(b.mul(inv_det)).to_complex();
+    result[[1, 0]] = SimdComplex::new(0.0, 0.0).sub(c.mul(inv_det)).to_complex();
+    result[[1, 1]] = a.mul(inv_det).to_complex();
     Some(result)
 }
 

@@ -5,6 +5,7 @@
 pub mod conversions;
 pub mod linalg;
 pub mod matrix_ops;
+pub mod simd;
 pub mod transforms;
 
 pub use conversions::*;

@@ -57,6 +57,7 @@ impl Network {
             format,
             param_type: crate::touchstone::parser::ParameterType::S,
             is_v2: false,
+            mixed_mode_order: Vec::new(),
         }
     }
 }

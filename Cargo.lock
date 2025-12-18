@@ -332,6 +332,7 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+ "rayon",
 ]
 
 [[package]]
@@ -719,6 +720,7 @@ dependencies = [
  "nalgebra",
  "ndarray",
  "num-complex",
+ "rayon",
  "rustfft",
  "thiserror",
 ]
