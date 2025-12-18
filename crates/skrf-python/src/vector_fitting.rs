@@ -284,22 +284,15 @@ impl PyVectorFitting {
 
     /// Enforce passivity of the fitted model
     ///
-    /// Uses iterative singular value perturbation to enforce passivity.
-    /// This modifies the internal residues to make the model passive.
+    /// Uses iterative singular value perturbation with Weighted Least Squares
+    /// to enforce passivity. This modifies the internal residues to make the model passive.
     ///
     /// Args:
     ///     network: The network that was fitted
-    ///     n_samples: Number of frequency samples for evaluation (default: 200)
     ///
     /// Returns:
     ///     Tuple of (success: bool, iterations: int, history_max_sigma: list)
-    #[pyo3(signature = (network, n_samples=200))]
-    pub fn passivity_enforce(
-        &mut self,
-        network: &PyNetwork,
-        n_samples: usize,
-    ) -> PyResult<(bool, usize, Vec<f64>)> {
-        let f_max = network.inner().frequency.stop();
+    pub fn passivity_enforce(&mut self, network: &PyNetwork) -> PyResult<(bool, usize, Vec<f64>)> {
         let result = self
             .inner
             .passivity_enforce(network.inner().nports())

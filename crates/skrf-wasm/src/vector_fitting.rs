@@ -142,15 +142,10 @@ impl WasmVectorFitting {
         Ok(arr)
     }
 
-    /// Enforce passivity of the fitted model
+    /// Enforce passivity of the fitted model using WLS
     /// Returns: Object with {success: bool, iterations: number, historyMaxSigma: Float64Array}
     #[wasm_bindgen(js_name = passivityEnforce)]
-    pub fn passivity_enforce(
-        &mut self,
-        network: &WasmNetwork,
-        n_samples: Option<usize>,
-    ) -> Result<JsValue, JsValue> {
-        let f_max = network.inner().frequency.stop();
+    pub fn passivity_enforce(&mut self, network: &WasmNetwork) -> Result<JsValue, JsValue> {
         let result = self
             .inner
             .passivity_enforce(network.inner().nports())

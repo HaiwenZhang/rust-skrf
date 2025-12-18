@@ -471,9 +471,13 @@ pub fn passivity_enforce(
     let pole_set = PoleSet::from_array(poles);
     let model_order = pole_set.model_order();
 
+    use super::constants::PASSIVITY_DAMPING_FACTOR;
     let mut sigma_max;
     let mut t = 0;
     let mut history_max_sigma: Vec<f64> = Vec::new();
+    let mut current_damping = PASSIVITY_DAMPING_FACTOR;
+    let mut best_c = c_t.clone();
+    let mut min_sigma = test_result.max_singular_value;
 
     // Iterative passivity enforcement
     while t < max_iterations {
@@ -487,30 +491,42 @@ pub fn passivity_enforce(
             nports,
         ) {
             Ok(res) => res,
-            Err(_) => break, // Fallback if test matrix logic fails
+            Err(_) => break,
         };
 
         sigma_max = test_result.max_singular_value;
         history_max_sigma.push(sigma_max);
 
+        if sigma_max < min_sigma {
+            min_sigma = sigma_max;
+            best_c = c_t.clone();
+        } else if sigma_max > min_sigma * 1.1 {
+            // Divergence detected, revert and reduce damping
+            c_t = best_c.clone();
+            current_damping *= 0.5;
+            if current_damping < 1e-4 {
+                break;
+            }
+        }
+
         if test_result.is_passive() || sigma_max <= 1.0 {
             break;
         }
 
-        // 2. Build thorough evaluation frequencies targeting violation bands
+        // 2. Build thorough evaluation frequencies targeting violation bands + DC Guard
         let mut sample_freqs = Vec::new();
+        // Commercial preference: Always guard DC to prevent offset drift
+        sample_freqs.push(0.0);
+
         for band in &test_result.violation_bands {
-            // Add boundaries and center
             sample_freqs.push(band[0]);
             if band[1].is_infinite() {
-                // For infinite bands, sample logarithmic points up to 10x
                 sample_freqs.push(band[0] * 1.5);
                 sample_freqs.push(band[0] * 3.0);
                 sample_freqs.push(band[0] * 10.0);
             } else {
                 sample_freqs.push(band[1]);
                 sample_freqs.push(0.5 * (band[0] + band[1]));
-                // If band is wide, add quarter points
                 if band[1] > 2.0 * band[0] {
                     sample_freqs.push(0.75 * band[0] + 0.25 * band[1]);
                     sample_freqs.push(0.25 * band[0] + 0.75 * band[1]);
@@ -521,16 +537,14 @@ pub fn passivity_enforce(
         sample_freqs.dedup();
 
         let n_fit_samples = sample_freqs.len();
-        if n_fit_samples == 0 {
-            break;
-        }
 
-        // 3. Precompute coefficients and S-matrices at target frequencies
+        // 3. Precompute coefficients and S-matrices with weighting
         let fit_coeffs = precompute_frequency_coefficients(&ss, &sample_freqs, nports);
         let c_complex = c_t.mapv(|x| Complex64::new(x, 0.0));
         let d_complex = ss.d.mapv(|x| Complex64::new(x, 0.0));
 
         let mut s_viol = Array3::<Complex64>::zeros((n_fit_samples, nports, nports));
+        let mut sample_weights = vec![1.0; n_fit_samples];
 
         for f_idx in 0..n_fit_samples {
             let coeff_slice = fit_coeffs.slice(s![f_idx, .., ..]);
@@ -540,7 +554,19 @@ pub fn passivity_enforce(
                 use super::constants::PASSIVITY_DELTA_THRESHOLD;
                 let delta = PASSIVITY_DELTA_THRESHOLD;
 
-                // Targeted perturbation: nudge all singular values above delta
+                let this_max_sig = sigma.iter().cloned().fold(0.0, f64::max);
+
+                // Weighting logic: Priority to high violations
+                // Points with no violation get low weight (just keep them where they are)
+                // DC Guard gets extremely high weight
+                if sample_freqs[f_idx] == 0.0 {
+                    sample_weights[f_idx] = 1000.0;
+                } else if this_max_sig > 1.0 {
+                    sample_weights[f_idx] = (this_max_sig - 1.0).sqrt() * 10.0 + 1.0;
+                } else {
+                    sample_weights[f_idx] = 0.1;
+                }
+
                 let sigma_viol: Vec<f64> = sigma
                     .iter()
                     .map(|&s| if s > delta { s - delta } else { 0.0 })
@@ -558,7 +584,7 @@ pub fn passivity_enforce(
             }
         }
 
-        // 4. Fit violation using least squares per response (i, j)
+        // 4. Fit violation using Weighted Least Squares per response (i, j)
         for i in 0..nports {
             for j in 0..nports {
                 let mut lapack_a = Vec::with_capacity(n_fit_samples * 2 * model_order);
@@ -567,21 +593,24 @@ pub fn passivity_enforce(
 
                 for f_idx in 0..n_fit_samples {
                     let viol = s_viol[[f_idx, i, j]];
-                    if viol.norm() > 1e-15 {
+                    let w = sample_weights[f_idx];
+
+                    // Add samples if they are violations OR for DC guard
+                    if viol.norm() > 1e-15 || sample_freqs[f_idx] == 0.0 {
                         count += 1;
                         let offset = j * model_order;
 
                         for k in 0..model_order {
                             let coeff = fit_coeffs[[f_idx, offset + k, j]];
-                            lapack_a.push(coeff.re);
+                            lapack_a.push(coeff.re * w);
                         }
-                        lapack_b.push(viol.re);
+                        lapack_b.push(viol.re * w);
 
                         for k in 0..model_order {
                             let coeff = fit_coeffs[[f_idx, offset + k, j]];
-                            lapack_a.push(coeff.im);
+                            lapack_a.push(coeff.im * w);
                         }
-                        lapack_b.push(viol.im);
+                        lapack_b.push(viol.im * w);
                     }
                 }
 
@@ -590,11 +619,10 @@ pub fn passivity_enforce(
                     let b_vec = Array1::from_vec(lapack_b);
 
                     if let Ok(result) = linalg::lstsq(&a_mat, &b_vec) {
-                        use super::constants::PASSIVITY_DAMPING_FACTOR;
                         for (k, &perturbation) in result.solution.iter().enumerate() {
                             let idx = j * model_order + k;
                             if idx < c_t.ncols() {
-                                c_t[[i, idx]] -= perturbation * PASSIVITY_DAMPING_FACTOR;
+                                c_t[[i, idx]] -= perturbation * current_damping;
                             }
                         }
                     }
