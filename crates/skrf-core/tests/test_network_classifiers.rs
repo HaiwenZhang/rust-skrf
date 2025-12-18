@@ -19,7 +19,7 @@ fn create_network_from_s(s_matrix: Vec<Vec<Complex64>>) -> Network {
         }
     }
     let z0 = Array1::from_elem(nports, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================

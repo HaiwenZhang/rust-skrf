@@ -22,7 +22,7 @@ fn create_delay_network(nfreq: usize) -> Network {
     }
 
     let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 fn create_2port_network(nfreq: usize) -> Network {
@@ -39,7 +39,7 @@ fn create_2port_network(nfreq: usize) -> Network {
     }
 
     let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 fn bench_impulse_response_1port(c: &mut Criterion) {

@@ -11,78 +11,116 @@ use ndarray::Array3;
 use num_complex::Complex64;
 
 use super::core::Network;
-use crate::constants::NEAR_ZERO;
 
-/// Connect two ports of a single n-port network's s-matrix.
+/// Generic S-parameter connection algorithm.
 ///
-/// Connects port `k` to port `l` on matrix `A`. This results in a (n-2)-port network.
-/// Uses the sub-network growth algorithm.
+/// Connects multiple port pairs within a single network.
 ///
 /// # Arguments
-/// * `a` - S-parameter matrix of shape [nfreq, nports, nports]
-/// * `k` - First port index (0-indexed)
-/// * `l` - Second port index (0-indexed)
-///
-/// # Returns
-/// New S-parameter matrix with 2 fewer ports
-pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Result<Array3<Complex64>> {
+/// * `a` - S-parameter matrix [nfreq, nports, nports]
+/// * `connections` - List of port pairs to connect [(k, l), ...]
+pub fn innerconnect_multi_s(
+    a: &Array3<Complex64>,
+    connections: &[(usize, usize)],
+) -> Result<Array3<Complex64>> {
     let nfreq = a.shape()[0];
     let nports = a.shape()[1];
 
-    if k >= nports {
-        bail!("port k={} out of range (network has {} ports)", k, nports);
-    }
-    if l >= nports {
-        bail!("port l={} out of range (network has {} ports)", l, nports);
-    }
-    if k == l {
-        bail!("cannot connect port {} to itself", k);
+    if connections.is_empty() {
+        return Ok(a.clone());
     }
 
-    // External ports (all ports except k and l)
-    let ext_ports: Vec<usize> = (0..nports).filter(|&i| i != k && i != l).collect();
+    // Identify internal and external ports
+    let mut internal_set = std::collections::HashSet::new();
+    for &(k, l) in connections {
+        if k >= nports || l >= nports {
+            bail!("Port index out of range");
+        }
+        if k == l {
+            bail!("Cannot connect port to itself");
+        }
+        if !internal_set.insert(k) || !internal_set.insert(l) {
+            bail!("Port connected more than once");
+        }
+    }
+
+    let mut ext_ports = Vec::new();
+    for i in 0..nports {
+        if !internal_set.contains(&i) {
+            ext_ports.push(i);
+        }
+    }
     let n_ext = ext_ports.len();
 
-    if n_ext == 0 {
-        bail!("cannot connect both ports of a 2-port network");
+    // Map internal ports to their indices in the Si_i matrix
+    let int_ports: Vec<usize> = connections.iter().flat_map(|&(k, l)| vec![k, l]).collect();
+    let n_int = int_ports.len();
+
+    // Connection matrix M (permutation matrix for the pairs)
+    // For each pair (k, l), M[k, l] = 1 and M[l, k] = 1
+    let mut m = nalgebra::DMatrix::<Complex64>::zeros(n_int, n_int);
+    for i in 0..connections.len() {
+        m[(2 * i, 2 * i + 1)] = Complex64::new(1.0, 0.0);
+        m[(2 * i + 1, 2 * i)] = Complex64::new(1.0, 0.0);
     }
 
-    let mut c = Array3::<Complex64>::zeros((nfreq, n_ext, n_ext));
+    let mut result = Array3::<Complex64>::zeros((nfreq, n_ext, n_ext));
 
     for f in 0..nfreq {
-        // Sub-matrices of internal ports
-        let akl = Complex64::new(1.0, 0.0) - a[[f, k, l]];
-        let alk = Complex64::new(1.0, 0.0) - a[[f, l, k]];
-        let akk = a[[f, k, k]];
-        let all = a[[f, l, l]];
-
-        // Determinant
-        let det = akl * alk - akk * all;
-        if det.norm() < NEAR_ZERO {
-            bail!("singular connection matrix at frequency index {}", f);
-        }
-
-        // Calculate resultant S-parameters for external ports
+        // Extract sub-matrices
+        // S_ee
+        let mut s_ee = nalgebra::DMatrix::<Complex64>::zeros(n_ext, n_ext);
         for (i, &ei) in ext_ports.iter().enumerate() {
             for (j, &ej) in ext_ports.iter().enumerate() {
-                // Base S-parameter
-                let mut sij = a[[f, ei, ej]];
+                s_ee[(i, j)] = a[[f, ei, ej]];
+            }
+        }
 
-                // Add connection terms
-                let aik = a[[f, ei, k]];
-                let ail = a[[f, ei, l]];
-                let akj = a[[f, k, ej]];
-                let alj = a[[f, l, ej]];
+        // S_ei
+        let mut s_ei = nalgebra::DMatrix::<Complex64>::zeros(n_ext, n_int);
+        for (i, &ei) in ext_ports.iter().enumerate() {
+            for (j, &ij) in int_ports.iter().enumerate() {
+                s_ei[(i, j)] = a[[f, ei, ij]];
+            }
+        }
 
-                sij +=
-                    (akj * ail * alk + alj * aik * akl + akj * all * aik + alj * akk * ail) / det;
+        // S_ie
+        let mut s_ie = nalgebra::DMatrix::<Complex64>::zeros(n_int, n_ext);
+        for (i, &ii) in int_ports.iter().enumerate() {
+            for (j, &ej) in ext_ports.iter().enumerate() {
+                s_ie[(i, j)] = a[[f, ii, ej]];
+            }
+        }
 
-                c[[f, i, j]] = sij;
+        // S_ii
+        let mut s_ii = nalgebra::DMatrix::<Complex64>::zeros(n_int, n_int);
+        for (i, &ii) in int_ports.iter().enumerate() {
+            for (j, &ij) in int_ports.iter().enumerate() {
+                s_ii[(i, j)] = a[[f, ii, ij]];
+            }
+        }
+
+        // S_new = S_ee + S_ei * (I - M * S_ii)^-1 * M * S_ie
+        let identity = nalgebra::DMatrix::<Complex64>::identity(n_int, n_int);
+        let m_inv_block = (identity - &m * s_ii)
+            .try_inverse()
+            .ok_or_else(|| anyhow::anyhow!("Singular matrix in connection at frequency {}", f))?;
+
+        let s_new = s_ee + s_ei * m_inv_block * &m * s_ie;
+
+        for i in 0..n_ext {
+            for j in 0..n_ext {
+                result[[f, i, j]] = s_new[(i, j)];
             }
         }
     }
 
-    Ok(c)
+    Ok(result)
+}
+
+/// Connect two ports of a single n-port network's s-matrix.
+pub fn innerconnect_s(a: &Array3<Complex64>, k: usize, l: usize) -> Result<Array3<Complex64>> {
+    innerconnect_multi_s(a, &[(k, l)])
 }
 
 /// Connect two n-port networks' s-matrices together.
@@ -168,7 +206,7 @@ impl Network {
         }
         let z0_new = ndarray::Array1::from_vec(z0_vec);
 
-        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
+        Network::new(self.frequency.clone(), s_new, z0_new)
     }
 
     /// Connect this network's port `k` to another network's port `l`
@@ -201,7 +239,7 @@ impl Network {
         }
         let z0_new = ndarray::Array1::from_vec(z0_vec);
 
-        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
+        Network::new(self.frequency.clone(), s_new, z0_new)
     }
 }
 
@@ -222,8 +260,8 @@ mod tests {
         s_thru[[0, 1, 0]] = Complex64::new(1.0, 0.0);
 
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let thru = Network::new(freq.clone(), s_thru.clone(), z0.clone());
-        let thru2 = Network::new(freq, s_thru, z0);
+        let thru = Network::new(freq.clone(), s_thru.clone(), z0.clone()).unwrap();
+        let thru2 = Network::new(freq, s_thru, z0).unwrap();
 
         // Connect port 1 of thru to port 0 of thru2
         let result = thru.connect(1, &thru2, 0);

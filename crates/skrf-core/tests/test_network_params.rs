@@ -25,7 +25,7 @@ fn create_simple_network() -> Network {
     s[[1, 1, 0]] = Complex64::new(0.65, 0.15);
     s[[1, 1, 1]] = Complex64::new(-0.25, -0.15);
     let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================
@@ -106,7 +106,7 @@ fn test_z0_scalar() {
     let freq = Frequency::new(1.0, 1.0, 1, FrequencyUnit::GHz, SweepType::Linear);
     let s = Array3::<Complex64>::zeros((1, 2, 2));
     let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     // Verify z0 access
     assert_eq!(ntwk.z0().len(), 2);
@@ -119,7 +119,7 @@ fn test_z0_vector() {
     let freq = Frequency::new(1.0, 1.0, 1, FrequencyUnit::GHz, SweepType::Linear);
     let s = Array3::<Complex64>::zeros((1, 2, 2));
     let z0 = Array1::from_vec(vec![Complex64::new(25.0, 0.0), Complex64::new(75.0, 0.0)]);
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     assert_relative_eq!(ntwk.z0()[0].re, 25.0, epsilon = 1e-15);
     assert_relative_eq!(ntwk.z0()[1].re, 75.0, epsilon = 1e-15);
@@ -134,7 +134,7 @@ fn test_z0_complex() {
         Complex64::new(50.0, 10.0),
         Complex64::new(75.0, -15.0),
     ]);
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     assert_relative_eq!(ntwk.z0()[0].re, 50.0, epsilon = 1e-15);
     assert_relative_eq!(ntwk.z0()[0].im, 10.0, epsilon = 1e-15);

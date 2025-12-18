@@ -80,7 +80,7 @@ mod tests {
         s[[0, 1, 1]] = Complex64::new(0.1, 0.0);
 
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         let ts = ntwk.to_touchstone(SParamFormat::RI);
 

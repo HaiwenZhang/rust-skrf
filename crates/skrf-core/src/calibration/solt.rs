@@ -111,11 +111,11 @@ impl OnePortSOL {
             }
         }
 
-        Ok(Network::new(
+        Network::new(
             uncalibrated.frequency.clone(),
             s_cal,
             uncalibrated.z0.clone(),
-        ))
+        )
     }
 }
 
@@ -137,6 +137,7 @@ pub struct Solt12Term {
 }
 
 impl Solt12Term {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         p1_short: Network,
         p1_open: Network,
@@ -195,7 +196,7 @@ impl Solt12Term {
         let (edr, esr, det_r) = s_p2.run()?;
         let err = det_r.clone() - (&edr * &esr);
 
-        // 3. Solve for Load Match (ELF, ELR) and Tracking (ETF, ETR) using Thru
+        // 3. Solve for Load Match (ELF) and Tracking (ETF) using Thru
         let mut elf = Array2::<Complex64>::zeros((nfreq, 1));
         let mut etf = Array2::<Complex64>::zeros((nfreq, 1));
         let mut elr = Array2::<Complex64>::zeros((nfreq, 1));
@@ -289,11 +290,11 @@ impl Solt12Term {
             }
         }
 
-        Ok(Network::new(
+        Network::new(
             uncalibrated.frequency.clone(),
             s_cal,
             uncalibrated.z0.clone(),
-        ))
+        )
     }
 }
 
@@ -332,17 +333,20 @@ mod tests {
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(-1.0, 0.0)),
             z0.clone(),
-        );
+        )
+        .unwrap();
         let open_model = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(1.0, 0.0)),
             z0.clone(),
-        );
+        )
+        .unwrap();
         let load_model = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(0.0, 0.0)),
             z0.clone(),
-        );
+        )
+        .unwrap();
 
         // Simulated measurements with error (Directivity=0.1, SourceMatch=0.05, ReflectionTracking=0.9)
         // Sm = e00 + (et * Si) / (1 - e11*Si)
@@ -358,17 +362,20 @@ mod tests {
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), simulate(Complex64::new(-1.0, 0.0))),
             z0.clone(),
-        );
+        )
+        .unwrap();
         let open_meas = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), simulate(Complex64::new(1.0, 0.0))),
             z0.clone(),
-        );
+        )
+        .unwrap();
         let load_meas = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), simulate(Complex64::new(0.0, 0.0))),
             z0.clone(),
-        );
+        )
+        .unwrap();
 
         let cal = OnePortSOL::new(
             short_meas,
@@ -386,7 +393,8 @@ mod tests {
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), sm_dirty),
             z0.clone(),
-        );
+        )
+        .unwrap();
 
         let calified = cal.apply(&uncal)?;
 
@@ -408,7 +416,7 @@ mod tests {
             let mut s = s_ideal.clone();
             s[[0, 1, 0]] = Complex64::new(1.0, 0.0);
             s[[0, 0, 1]] = Complex64::new(1.0, 0.0);
-            Network::new(freq.clone(), s, z0.clone())
+            Network::new(freq.clone(), s, z0.clone()).unwrap()
         };
 
         // Simplified: use ideal measurements to verify identity
@@ -416,17 +424,20 @@ mod tests {
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(-1.0, 0.0)),
             Array1::from_elem(1, Complex64::new(50.0, 0.0)),
-        );
+        )
+        .unwrap();
         let open = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(1.0, 0.0)),
             Array1::from_elem(1, Complex64::new(50.0, 0.0)),
-        );
+        )
+        .unwrap();
         let load = Network::new(
             freq.clone(),
             Array3::from_elem((nfreq, 1, 1), Complex64::new(0.0, 0.0)),
             Array1::from_elem(1, Complex64::new(50.0, 0.0)),
-        );
+        )
+        .unwrap();
 
         let cal = Solt12Term::new(
             short.clone(),

@@ -32,7 +32,7 @@ fn create_1port_network(s_values: &[Complex64]) -> Network {
         s[[f, 0, 0]] = val;
     }
     let z0 = Array1::from_elem(1, Complex64::new(1.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================

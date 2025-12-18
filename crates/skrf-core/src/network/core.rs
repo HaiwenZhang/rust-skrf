@@ -7,7 +7,9 @@ use num_complex::Complex64;
 
 use crate::frequency::Frequency;
 use crate::math::transforms::{y2s, z2s};
-use crate::touchstone::{parser::TouchstoneError, Touchstone};
+use crate::touchstone::Touchstone;
+
+use anyhow::{bail, Result};
 
 /// An N-port electrical network
 #[derive(Debug, Clone)]
@@ -28,21 +30,64 @@ pub struct Network {
 
 impl Network {
     /// Create a new Network from S-parameters
-    pub fn new(frequency: Frequency, s: Array3<Complex64>, z0: Array1<Complex64>) -> Self {
-        Self {
+    pub fn new(frequency: Frequency, s: Array3<Complex64>, z0: Array1<Complex64>) -> Result<Self> {
+        let net = Self {
             frequency,
             s,
             z0,
             name: None,
             comments: Vec::new(),
             mixed_mode_order: Vec::new(),
+        };
+        net.validate()?;
+        Ok(net)
+    }
+
+    /// Validate core invariants
+    pub fn validate(&self) -> Result<()> {
+        let nfreq = self.frequency.npoints();
+        let nports = self.z0.len();
+
+        // Check S-parameter dimensions [nfreq, nports, nports]
+        if self.s.shape()[0] != nfreq {
+            bail!(
+                "Frequency count mismatch: {} vs {}",
+                self.s.shape()[0],
+                nfreq
+            );
         }
+        if self.s.shape()[1] != nports || self.s.shape()[2] != nports {
+            bail!(
+                "Port count mismatch: S-matrix is {}x{}, but z0 has {} elements",
+                self.s.shape()[1],
+                self.s.shape()[2],
+                nports
+            );
+        }
+
+        // Check frequency monotonicity
+        if nfreq > 1 {
+            let freqs = self.frequency.f();
+            for i in 1..nfreq {
+                if freqs[i] <= freqs[i - 1] {
+                    bail!(
+                        "Frequency axis must be strictly increasing: f[{}]={} <= f[{}]={}",
+                        i,
+                        freqs[i],
+                        i - 1,
+                        freqs[i - 1]
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Create from a Touchstone file
-    pub fn from_touchstone(path: &str) -> Result<Self, TouchstoneError> {
+    pub fn from_touchstone(path: &str) -> Result<Self> {
         let ts = Touchstone::from_file(path)?;
-        Ok(Self::from_touchstone_data(ts))
+        Self::from_touchstone_data(ts)
     }
 
     /// Create from Touchstone content string
@@ -58,15 +103,15 @@ impl Network {
     /// let content = std::fs::read_to_string("test.s2p")?;
     /// let ntwk = Network::from_touchstone_content(&content, 2)?;
     /// ```
-    pub fn from_touchstone_content(content: &str, nports: usize) -> Result<Self, TouchstoneError> {
+    pub fn from_touchstone_content(content: &str, nports: usize) -> Result<Self> {
         let ts = Touchstone::from_str(content, nports)?;
-        Ok(Self::from_touchstone_data(ts))
+        Self::from_touchstone_data(ts)
     }
 
     /// Internal: Convert Touchstone data to Network
     ///
     /// Shared logic for both file and string-based construction.
-    fn from_touchstone_data(ts: Touchstone) -> Self {
+    fn from_touchstone_data(ts: Touchstone) -> Result<Self> {
         let nfreq = ts.nfreq();
         let nports = ts.nports;
 
@@ -79,14 +124,11 @@ impl Network {
         // Apply parameter type conversion and V1 denormalization
         let s = Self::convert_params_to_s(s, &ts, &z0);
 
-        Self {
-            frequency: ts.frequency,
-            s,
-            z0,
-            name: None,
-            comments: ts.comments,
-            mixed_mode_order: ts.mixed_mode_order,
-        }
+        Self::new(ts.frequency, s, z0).map(|mut net| {
+            net.comments = ts.comments;
+            net.mixed_mode_order = ts.mixed_mode_order;
+            net
+        })
     }
 
     /// Internal: Convert parameters to S-parameters with V1 denormalization
@@ -168,7 +210,7 @@ mod tests {
 
         let s = Array3::<Complex64>::zeros((10, 2, 2));
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         assert_eq!(ntwk.nports(), 2);
         assert_eq!(ntwk.nfreq(), 10);

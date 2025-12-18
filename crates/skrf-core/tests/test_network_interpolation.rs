@@ -20,7 +20,7 @@ fn test_network_resample() {
     let original_nfreq = ntwk.nfreq();
 
     // Resample to half the points
-    let resampled = ntwk.resample(original_nfreq / 2);
+    let resampled = ntwk.resample(original_nfreq / 2).expect("resample failed");
 
     assert_eq!(resampled.nfreq(), original_nfreq / 2);
     assert_eq!(resampled.nports(), ntwk.nports());
@@ -39,7 +39,7 @@ fn test_network_resample_more_points() {
     let original_nfreq = ntwk.nfreq();
 
     // Resample to double the points
-    let resampled = ntwk.resample(original_nfreq * 2);
+    let resampled = ntwk.resample(original_nfreq * 2).expect("resample failed");
 
     assert_eq!(resampled.nfreq(), original_nfreq * 2);
     assert_eq!(resampled.nports(), ntwk.nports());
@@ -60,7 +60,7 @@ fn test_network_crop_frequency() {
     let f_mid = (f_start + f_end) / 2.0;
 
     // Crop to lower half of frequency range
-    let cropped = ntwk.cropped(f_start, f_mid);
+    let cropped = ntwk.cropped(f_start, f_mid).expect("cropped failed");
 
     // Cropped network should have fewer frequency points
     assert!(
@@ -88,7 +88,7 @@ fn test_interpolation_preserves_endpoints() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load ntwk1.s2p");
 
     // Create a resampled network with different number of points
-    let resampled = ntwk.resample(ntwk.nfreq() + 10);
+    let resampled = ntwk.resample(ntwk.nfreq() + 10).expect("resample failed");
 
     // First and last frequencies should be approximately the same
     let orig_f = ntwk.f();
@@ -107,7 +107,7 @@ fn test_interpolation_preserves_z0() {
     let path = format!("{}/ntwk1.s2p", TEST_DATA_DIR);
     let ntwk = Network::from_touchstone(&path).expect("Failed to load ntwk1.s2p");
 
-    let resampled = ntwk.resample(ntwk.nfreq() * 2);
+    let resampled = ntwk.resample(ntwk.nfreq() * 2).expect("resample failed");
 
     // Z0 should be preserved
     for p in 0..ntwk.nports() {
@@ -125,7 +125,7 @@ fn test_interpolation_single_point() {
     let ntwk = Network::from_touchstone(&path).expect("Failed to load ntwk1.s2p");
 
     // Resample to single point
-    let single = ntwk.resample(1);
+    let single = ntwk.resample(1).expect("resample failed");
 
     assert_eq!(single.nfreq(), 1);
     assert_eq!(single.nports(), ntwk.nports());

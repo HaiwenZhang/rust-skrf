@@ -22,7 +22,7 @@ fn create_test_network() -> Network {
         s[[f, 1, 1]] = Complex64::new(0.1, -0.05 * f as f64);
     }
     let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================
@@ -64,7 +64,7 @@ fn test_constructor_empty() {
     let freq = Frequency::new(1.0, 1.0, 1, FrequencyUnit::GHz, SweepType::Linear);
     let s = Array3::<Complex64>::zeros((1, 1, 1));
     let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     assert_eq!(ntwk.nports(), 1);
     assert_eq!(ntwk.nfreq(), 1);
@@ -78,7 +78,7 @@ fn test_constructor_from_values() {
     s[[0, 0, 0]] = Complex64::new(1.0, 2.0);
     s[[1, 0, 0]] = Complex64::new(3.0, 4.0);
     let z0 = Array1::from_vec(vec![Complex64::new(50.0, 0.0), Complex64::new(75.0, 0.0)]);
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     assert_eq!(ntwk.nports(), 2);
     assert_eq!(ntwk.nfreq(), 2);

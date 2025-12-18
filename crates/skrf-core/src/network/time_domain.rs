@@ -224,7 +224,7 @@ mod tests {
         }
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         let result = ntwk.impulse_response(WindowType::Hamming, 0);
         assert!(result.is_some());

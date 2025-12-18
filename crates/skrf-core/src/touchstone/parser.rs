@@ -497,6 +497,18 @@ impl ParserState {
         if self.current_freq_data.len() >= expected_values {
             // Extract one frequency point
             let freq = self.current_freq_data[0] * self.freq_unit.multiplier();
+
+            // In Touchstone v1, a frequency decrease or equality usually indicates
+            // the transition from network data to noise data.
+            if !self.is_v2
+                && !self.frequencies.is_empty()
+                && freq <= *self.frequencies.last().unwrap()
+            {
+                self.noise_data_encountered = true;
+                self.current_freq_data.clear();
+                return Ok(());
+            }
+
             self.frequencies.push(freq);
 
             let mut s_matrix = vec![vec![Complex64::new(0.0, 0.0); self.nports]; self.nports];
@@ -663,7 +675,7 @@ mod tests {
 [Network Data]
 1.0 0.1 0.0 0.0 0.1 0.0 0.1 0.1 0.0";
         let ts = Touchstone::from_str(content, 0).unwrap();
-        assert_eq!(ts.is_v2, true);
+        assert!(ts.is_v2);
         assert_eq!(ts.nports, 2);
         assert_eq!(ts.z0, vec![50.0, 75.0]);
         assert_eq!(ts.mixed_mode_order, vec!["D1,2", "C1,2"]);

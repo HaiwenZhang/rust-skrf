@@ -191,7 +191,7 @@ mod tests {
         s[[0, 1, 3]] = Complex64::new(0.707, 0.0); // Port 3 -> Port 1
 
         let z0 = Array1::from_elem(4, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         let mm = ntwk.to_mixed_mode();
         assert!(mm.is_some());
@@ -214,7 +214,7 @@ mod tests {
         s[[0, 3, 1]] = Complex64::new(1.0, 0.0);
 
         let z0 = Array1::<Complex64>::from_elem(4, Complex64::new(50.0, 0.0));
-        let net = Network::new(freq, s, z0);
+        let net = Network::new(freq, s, z0).unwrap();
 
         // Standard 4-port mapping: (0,1) and (2,3)
         let s_mm = net.se2gmm(&[(0, 1), (2, 3)]);
@@ -248,7 +248,7 @@ mod tests {
         s[[0, 2, 1]] = s[[0, 1, 2]];
 
         let z0 = Array1::<Complex64>::from_elem(6, Complex64::new(50.0, 0.0));
-        let net = Network::new(freq, s, z0);
+        let net = Network::new(freq, s, z0).unwrap();
 
         let pairs = &[(0, 1), (2, 3), (4, 5)];
         let s_mm = net.se2gmm(pairs);
@@ -279,7 +279,7 @@ mod tests {
         s[[0, 3, 7]] = s[[0, 7, 3]];
 
         let z0 = Array1::<Complex64>::from_elem(8, Complex64::new(50.0, 0.0));
-        let net = Network::new(freq, s, z0);
+        let net = Network::new(freq, s, z0).unwrap();
 
         let pairs = &[(0, 7), (3, 4), (1, 2), (5, 6)];
         let s_mm = net.se2gmm(pairs);

@@ -306,7 +306,7 @@ mod tests {
         s[[0, 1, 1]] = Complex64::new(0.1, 0.0);
 
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         // Excite only port 0
         let a = Array1::from_vec(vec![Complex64::new(1.0, 0.0), Complex64::new(0.0, 0.0)]);
@@ -325,7 +325,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(0.5, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         let a = Array1::from_vec(vec![Complex64::new(1.0, 0.0)]);
         let vswr = ntwk.vswr_active(&a).unwrap();

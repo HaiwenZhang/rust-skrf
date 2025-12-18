@@ -159,7 +159,7 @@ mod tests {
         s[[0, 1, 0]] = Complex64::new(0.5, 0.1);
 
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         assert!(ntwk.is_reciprocal(None));
     }
@@ -173,7 +173,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(0.5, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         assert!(ntwk.is_passive(None));
     }
@@ -187,7 +187,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(1.0, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         assert!(ntwk.is_lossless(None));
     }

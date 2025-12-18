@@ -5,9 +5,6 @@
 use ndarray::{Array1, Array2, Array3, Zip};
 use num_complex::Complex64;
 
-#[cfg(feature = "parallel")]
-use ndarray::parallel::prelude::*;
-
 use crate::constants::NEAR_ZERO;
 use crate::math::matrix_ops::{
     inv_sqrt_z0_matrix, invert_2x2_simd, mul_2x2_simd, sqrt_z0_matrix, z0_diag_matrix,
@@ -49,12 +46,10 @@ pub fn s2z(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
                 let z_f_val = mul_2x2_simd(&mul_2x2_simd(&f_mat, &term), &f_mat);
                 z_f.assign(&z_f_val);
             }
-        } else {
-            if let Some(inv_i_minus_s) = invert_matrix(&i_minus_s.to_owned()) {
-                let term = i_plus_s.dot(&inv_i_minus_s);
-                let z_f_val = f_mat.dot(&term).dot(&f_mat);
-                z_f.assign(&z_f_val);
-            }
+        } else if let Some(inv_i_minus_s) = invert_matrix(&i_minus_s.to_owned()) {
+            let term = i_plus_s.dot(&inv_i_minus_s);
+            let z_f_val = f_mat.dot(&term).dot(&f_mat);
+            z_f.assign(&z_f_val);
         }
     });
 
@@ -88,12 +83,10 @@ pub fn z2s(z: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
                 let s_f_val = mul_2x2_simd(&mul_2x2_simd(&inv_f_mat, &term), &f_mat);
                 s_f.assign(&s_f_val);
             }
-        } else {
-            if let Some(inv_term) = invert_matrix(&z_plus_z0.to_owned()) {
-                let term = z_minus_z0.dot(&inv_term);
-                let s_f_val = inv_f_mat.dot(&term).dot(&f_mat);
-                s_f.assign(&s_f_val);
-            }
+        } else if let Some(inv_term) = invert_matrix(&z_plus_z0.to_owned()) {
+            let term = z_minus_z0.dot(&inv_term);
+            let s_f_val = inv_f_mat.dot(&term).dot(&f_mat);
+            s_f.assign(&s_f_val);
         }
     });
 
@@ -129,12 +122,10 @@ pub fn s2y(s: &Array3<Complex64>, z0: &Array1<Complex64>) -> Array3<Complex64> {
                 let y_f_val = mul_2x2_simd(&mul_2x2_simd(&g_mat, &term), &g_mat);
                 y_f.assign(&y_f_val);
             }
-        } else {
-            if let Some(inv_i_plus_s) = invert_matrix(&i_plus_s.to_owned()) {
-                let term = i_minus_s.dot(&inv_i_plus_s);
-                let y_f_val = g_mat.dot(&term).dot(&g_mat);
-                y_f.assign(&y_f_val);
-            }
+        } else if let Some(inv_i_plus_s) = invert_matrix(&i_plus_s.to_owned()) {
+            let term = i_minus_s.dot(&inv_i_plus_s);
+            let y_f_val = g_mat.dot(&term).dot(&g_mat);
+            y_f.assign(&y_f_val);
         }
     });
 

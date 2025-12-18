@@ -102,7 +102,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(0.0, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
         let z = ntwk.z();
 
         assert_relative_eq!(z[[0, 0, 0]].re, 50.0, epsilon = 1e-10);

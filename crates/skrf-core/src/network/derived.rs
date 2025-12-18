@@ -263,7 +263,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(0.1, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
         let s_db = ntwk.s_db();
 
         assert_relative_eq!(s_db[[0, 0, 0]], -20.0, epsilon = 1e-10);
@@ -278,7 +278,7 @@ mod tests {
         s[[0, 0, 0]] = Complex64::new(0.5, 0.0);
 
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
         let vswr = ntwk.vswr();
 
         assert_relative_eq!(vswr[[0, 0, 0]], 3.0, epsilon = 1e-10);
@@ -294,7 +294,7 @@ mod tests {
         s[[0, 1, 0]] = Complex64::new(0.5, 0.1);
 
         let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
         let recip = ntwk.reciprocity();
 
         assert_relative_eq!(recip[[0, 0, 1]], 0.0, epsilon = 1e-10);

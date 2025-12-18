@@ -25,7 +25,7 @@ fn create_delay_line(delay_ns: f64, nfreq: usize) -> Network {
     }
 
     let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 /// Helper to create a 2-port through line
@@ -40,7 +40,7 @@ fn create_thru_line(nfreq: usize) -> Network {
     }
 
     let z0 = Array1::from_elem(2, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================
@@ -237,7 +237,7 @@ fn test_single_frequency_returns_none() {
     let freq = Frequency::new(1.0, 1.0, 1, FrequencyUnit::GHz, SweepType::Linear);
     let s = Array3::<Complex64>::zeros((1, 1, 1));
     let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-    let ntwk = Network::new(freq, s, z0);
+    let ntwk = Network::new(freq, s, z0).unwrap();
 
     let result = ntwk.impulse_response(WindowType::None, 0);
     assert!(result.is_none(), "Single freq should return None");

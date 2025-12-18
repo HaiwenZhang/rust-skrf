@@ -9,6 +9,7 @@ use num_complex::Complex64;
 use super::core::Network;
 use crate::constants::{DC_FREQ_TOL, NEAR_ZERO};
 use crate::frequency::{Frequency, FrequencyUnit, SweepType};
+use anyhow::Result;
 
 impl Network {
     /// Interpolate S-parameters to a new frequency vector
@@ -18,7 +19,7 @@ impl Network {
     ///
     /// # Arguments
     /// * `new_freq` - New frequency points in Hz
-    pub fn interpolate(&self, new_freq: &Frequency) -> Network {
+    pub fn interpolate(&self, new_freq: &Frequency) -> Result<Network> {
         let old_f = self.frequency.f();
         let new_f = new_freq.f();
         let nports = self.nports();
@@ -39,7 +40,7 @@ impl Network {
     }
 
     /// Interpolate to a specified number of linearly-spaced points
-    pub fn interpolate_n(&self, npoints: usize) -> Network {
+    pub fn interpolate_n(&self, npoints: usize) -> Result<Network> {
         let f = self.frequency.f();
         let f_start = f.first().copied().unwrap_or(0.0);
         let f_stop = f.last().copied().unwrap_or(1.0);
@@ -62,7 +63,7 @@ impl Network {
     /// Crop network to a frequency range (in Hz)
     ///
     /// Returns a new network containing only points within [f_start, f_stop].
-    pub fn cropped(&self, f_start: f64, f_stop: f64) -> Network {
+    pub fn cropped(&self, f_start: f64, f_stop: f64) -> Result<Network> {
         let f = self.frequency.f();
         let nports = self.nports();
 
@@ -104,7 +105,7 @@ impl Network {
     }
 
     /// Crop network to a frequency range in specified units
-    pub fn cropped_unit(&self, f_start: f64, f_stop: f64, unit: FrequencyUnit) -> Network {
+    pub fn cropped_unit(&self, f_start: f64, f_stop: f64, unit: FrequencyUnit) -> Result<Network> {
         let mult = unit.multiplier();
         self.cropped(f_start * mult, f_stop * mult)
     }
@@ -112,7 +113,7 @@ impl Network {
     /// Resample network to specified number of points
     ///
     /// Alias for interpolate_n
-    pub fn resample(&self, npoints: usize) -> Network {
+    pub fn resample(&self, npoints: usize) -> Result<Network> {
         self.interpolate_n(npoints)
     }
 
@@ -123,14 +124,14 @@ impl Network {
     ///
     /// # Arguments
     /// * `dc_sparam` - Optional S-parameter value at DC. If None, extrapolates from data.
-    pub fn extrapolate_to_dc(&self, dc_sparam: Option<Complex64>) -> Network {
+    pub fn extrapolate_to_dc(&self, dc_sparam: Option<Complex64>) -> Result<Network> {
         let f = self.frequency.f();
         let nfreq = self.nfreq();
         let nports = self.nports();
 
         // Check if already starts at DC
         if nfreq > 0 && f[0].abs() < DC_FREQ_TOL {
-            return self.clone();
+            return Ok(self.clone());
         }
 
         // Create new frequency vector with DC point
@@ -245,10 +246,10 @@ mod tests {
             s[[f, 0, 0]] = Complex64::new(f as f64 * 0.1, 0.0);
         }
         let z0 = Array1::from_elem(nports, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
 
         // Crop to 3-7 GHz
-        let cropped = ntwk.cropped_unit(3.0, 7.0, FrequencyUnit::GHz);
+        let cropped = ntwk.cropped_unit(3.0, 7.0, FrequencyUnit::GHz).unwrap();
 
         // Should have fewer frequency points
         assert!(cropped.nfreq() < ntwk.nfreq());
@@ -263,10 +264,10 @@ mod tests {
             s[[f, 0, 0]] = Complex64::new(f as f64 * 0.2, 0.0);
         }
         let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-        let ntwk = Network::new(freq.clone(), s, z0);
+        let ntwk = Network::new(freq.clone(), s, z0).unwrap();
 
         // Interpolate to same frequency - should be identity
-        let interp = ntwk.interpolate(&freq);
+        let interp = ntwk.interpolate(&freq).unwrap();
 
         assert_eq!(interp.nfreq(), 5);
         for f in 0..5 {

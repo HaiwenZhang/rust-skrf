@@ -58,11 +58,7 @@ impl Network {
             s_result[[f, 1, 1]] = s_b[1][1] + (s_b[0][1] * s_b[1][0] * s_a[1][1]) / denom;
         }
 
-        Ok(Network::new(
-            self.frequency.clone(),
-            s_result,
-            self.z0.clone(),
-        ))
+        Network::new(self.frequency.clone(), s_result, self.z0.clone())
     }
 
     /// Flip the ports of a 2-port network (swap port 1 and port 2)
@@ -87,7 +83,7 @@ impl Network {
         // Also flip z0
         let z0_flipped = Array1::from_vec(vec![self.z0[1], self.z0[0]]);
 
-        Ok(Network::new(self.frequency.clone(), s_flipped, z0_flipped))
+        Network::new(self.frequency.clone(), s_flipped, z0_flipped)
     }
 
     /// Get inverse S-parameters for de-embedding
@@ -128,7 +124,7 @@ impl Network {
         let s_inv = t2s(&t_inv)
             .ok_or_else(|| anyhow::anyhow!("T22 near zero, cannot convert back to S-params"))?;
 
-        Ok(Network::new(self.frequency.clone(), s_inv, self.z0.clone()))
+        Network::new(self.frequency.clone(), s_inv, self.z0.clone())
     }
 
     /// De-embed another network from this one
@@ -194,7 +190,7 @@ impl Network {
             z0_new[i] = self.z0[mapping[i]];
         }
 
-        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
+        Network::new(self.frequency.clone(), s_new, z0_new)
     }
 
     /// Extract a subnetwork with specified ports
@@ -233,7 +229,7 @@ impl Network {
             }
         }
 
-        Ok(Network::new(self.frequency.clone(), s_new, z0_new))
+        Network::new(self.frequency.clone(), s_new, z0_new)
     }
 }
 
@@ -250,7 +246,7 @@ impl Add for &Network {
         }
 
         let s_new = &self.s + &other.s;
-        Some(Network::new(self.frequency.clone(), s_new, self.z0.clone()))
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).ok()
     }
 }
 
@@ -264,7 +260,7 @@ impl Sub for &Network {
         }
 
         let s_new = &self.s - &other.s;
-        Some(Network::new(self.frequency.clone(), s_new, self.z0.clone()))
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).ok()
     }
 }
 
@@ -274,7 +270,7 @@ impl Mul<Complex64> for &Network {
     /// Multiply all S-parameters by a complex scalar
     fn mul(self, scalar: Complex64) -> Network {
         let s_new = self.s.mapv(|x| x * scalar);
-        Network::new(self.frequency.clone(), s_new, self.z0.clone())
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).unwrap()
     }
 }
 
@@ -284,7 +280,7 @@ impl Mul<f64> for &Network {
     /// Multiply all S-parameters by a real scalar
     fn mul(self, scalar: f64) -> Network {
         let s_new = self.s.mapv(|x| x * scalar);
-        Network::new(self.frequency.clone(), s_new, self.z0.clone())
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).unwrap()
     }
 }
 
@@ -294,7 +290,7 @@ impl Div<Complex64> for &Network {
     /// Divide all S-parameters by a complex scalar
     fn div(self, scalar: Complex64) -> Network {
         let s_new = self.s.mapv(|x| x / scalar);
-        Network::new(self.frequency.clone(), s_new, self.z0.clone())
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).unwrap()
     }
 }
 
@@ -304,7 +300,7 @@ impl Div<f64> for &Network {
     /// Divide all S-parameters by a real scalar
     fn div(self, scalar: f64) -> Network {
         let s_new = self.s.mapv(|x| x / scalar);
-        Network::new(self.frequency.clone(), s_new, self.z0.clone())
+        Network::new(self.frequency.clone(), s_new, self.z0.clone()).unwrap()
     }
 }
 
@@ -324,7 +320,7 @@ mod tests {
         s[[0, 1, 0]] = Complex64::new(0.5, 0.0); // S21
 
         let z0 = Array1::from_vec(vec![Complex64::new(50.0, 0.0), Complex64::new(75.0, 0.0)]);
-        let ntwk = Network::new(freq, s, z0);
+        let ntwk = Network::new(freq, s, z0).unwrap();
         let flipped = ntwk.flipped().unwrap();
 
         // After flip: S11 <-> S22, S12 <-> S21

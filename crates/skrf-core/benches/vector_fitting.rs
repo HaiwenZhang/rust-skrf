@@ -41,7 +41,7 @@ fn create_test_network(nfreq: usize, nports: usize) -> Network {
     }
 
     let z0 = Array1::from_elem(nports, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 fn bench_vector_fit_1port(c: &mut Criterion) {

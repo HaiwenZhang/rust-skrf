@@ -43,7 +43,7 @@ fn create_simple_1port() -> Network {
     }
 
     let z0 = Array1::from_elem(1, Complex64::new(50.0, 0.0));
-    Network::new(freq, s, z0)
+    Network::new(freq, s, z0).unwrap()
 }
 
 // ============================================================================
