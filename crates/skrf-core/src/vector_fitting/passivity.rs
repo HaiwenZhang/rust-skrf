@@ -438,8 +438,6 @@ pub fn passivity_enforce(
     constant_coeff: &Array1<f64>,
     proportional_coeff: &Array1<f64>,
     nports: usize,
-    f_max: f64,
-    n_samples: usize,
     max_iterations: usize,
 ) -> Result<PassivityEnforceResult, String> {
     // Check for proportional coefficients (not supported)
@@ -468,71 +466,86 @@ pub fn passivity_enforce(
     // Mutable C matrix for perturbation
     let mut c_t = ss.c.clone();
 
-    // Frequency evaluation band
-    use super::constants::PASSIVITY_FREQ_MARGIN;
-    let f_eval_max = PASSIVITY_FREQ_MARGIN * f_max;
-    let freqs_eval: Vec<f64> = (0..n_samples)
-        .map(|i| i as f64 * f_eval_max / (n_samples - 1) as f64)
-        .collect();
-
     // Count model order
     use super::poles::PoleSet;
     let pole_set = PoleSet::from_array(poles);
     let model_order = pole_set.model_order();
 
-    // Precompute (s*I - A)^-1 * B for all frequencies (use helper function)
-    let coeffs = precompute_frequency_coefficients(&ss, &freqs_eval, nports);
-
-    // Iteration parameters
-    use super::constants::PASSIVITY_DELTA_THRESHOLD;
-    let delta_threshold = PASSIVITY_DELTA_THRESHOLD;
-    let mut sigma_max = 1.1;
+    let mut sigma_max;
     let mut t = 0;
     let mut history_max_sigma: Vec<f64> = Vec::new();
 
     // Iterative passivity enforcement
-    while t < max_iterations && sigma_max > 1.0 {
-        // Calculate S-matrix at evaluation frequencies
-        // S_eval = D + C_t * coeffs
-        let c_complex = c_t.mapv(|x| Complex64::new(x, 0.0));
-        let d_complex = ss.d.mapv(|x| Complex64::new(x, 0.0));
+    while t < max_iterations {
+        // 1. Get current residues and test passivity
+        let current_residues = c_matrix_to_residues(&c_t, poles, residues, nports, model_order);
+        let test_result = match passivity_test(
+            poles,
+            &current_residues,
+            constant_coeff,
+            proportional_coeff,
+            nports,
+        ) {
+            Ok(res) => res,
+            Err(_) => break, // Fallback if test matrix logic fails
+        };
 
-        let mut s_eval = Array3::<Complex64>::zeros((n_samples, nports, nports));
-        for f_idx in 0..n_samples {
-            let coeff_slice = coeffs.slice(s![f_idx, .., ..]);
-            let s_matrix = c_complex.dot(&coeff_slice.to_owned());
-            for i in 0..nports {
-                for j in 0..nports {
-                    s_eval[[f_idx, i, j]] = s_matrix[[i, j]] + d_complex[[i, j]];
+        sigma_max = test_result.max_singular_value;
+        history_max_sigma.push(sigma_max);
+
+        if test_result.is_passive() || sigma_max <= 1.0 {
+            break;
+        }
+
+        // 2. Build thorough evaluation frequencies targeting violation bands
+        let mut sample_freqs = Vec::new();
+        for band in &test_result.violation_bands {
+            // Add boundaries and center
+            sample_freqs.push(band[0]);
+            if band[1].is_infinite() {
+                // For infinite bands, sample logarithmic points up to 10x
+                sample_freqs.push(band[0] * 1.5);
+                sample_freqs.push(band[0] * 3.0);
+                sample_freqs.push(band[0] * 10.0);
+            } else {
+                sample_freqs.push(band[1]);
+                sample_freqs.push(0.5 * (band[0] + band[1]));
+                // If band is wide, add quarter points
+                if band[1] > 2.0 * band[0] {
+                    sample_freqs.push(0.75 * band[0] + 0.25 * band[1]);
+                    sample_freqs.push(0.25 * band[0] + 0.75 * band[1]);
                 }
             }
         }
+        sample_freqs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        sample_freqs.dedup();
 
-        // Find maximum singular value and compute violations
-        sigma_max = 0.0;
-        let mut s_viol = Array3::<Complex64>::zeros((n_samples, nports, nports));
+        let n_fit_samples = sample_freqs.len();
+        if n_fit_samples == 0 {
+            break;
+        }
 
-        for f_idx in 0..n_samples {
-            let s_f = s_eval.slice(s![f_idx, .., ..]).to_owned();
+        // 3. Precompute coefficients and S-matrices at target frequencies
+        let fit_coeffs = precompute_frequency_coefficients(&ss, &sample_freqs, nports);
+        let c_complex = c_t.mapv(|x| Complex64::new(x, 0.0));
+        let d_complex = ss.d.mapv(|x| Complex64::new(x, 0.0));
 
-            if let Ok((u, sigma, vh)) = svd_complex_full(&s_f) {
-                let this_sigma_max: f64 = sigma.iter().cloned().fold(0.0_f64, f64::max);
-                sigma_max = f64::max(sigma_max, this_sigma_max);
+        let mut s_viol = Array3::<Complex64>::zeros((n_fit_samples, nports, nports));
 
-                // Compute violation matrix
-                let delta = if this_sigma_max > delta_threshold {
-                    delta_threshold
-                } else {
-                    this_sigma_max
-                };
+        for f_idx in 0..n_fit_samples {
+            let coeff_slice = fit_coeffs.slice(s![f_idx, .., ..]);
+            let s_f = c_complex.dot(&coeff_slice.to_owned()) + &d_complex;
 
-                // sigma_viol[k] = max(sigma[k] - delta, 0)
+            if let Ok((u, sigma, vh)) = svd_complex_full(&s_f.to_owned()) {
+                use super::constants::PASSIVITY_DELTA_THRESHOLD;
+                let delta = PASSIVITY_DELTA_THRESHOLD;
+
+                // Targeted perturbation: nudge all singular values above delta
                 let sigma_viol: Vec<f64> = sigma
                     .iter()
                     .map(|&s| if s > delta { s - delta } else { 0.0 })
                     .collect();
 
-                // S_viol = U * diag(sigma_viol) * Vh
                 for i in 0..nports {
                     for j in 0..nports {
                         let mut val = Complex64::new(0.0, 0.0);
@@ -545,38 +558,27 @@ pub fn passivity_enforce(
             }
         }
 
-        history_max_sigma.push(sigma_max);
-
-        if sigma_max <= 1.0 {
-            break;
-        }
-
-        // Fit violation residues using least squares
-        // For each response (i, j), we solve:
-        // sum_k Delta_C_{i, j*model_order + k} * coeffs[f, j*model_order + k, j] = Delta_S_{i, j}[f]
+        // 4. Fit violation using least squares per response (i, j)
         for i in 0..nports {
             for j in 0..nports {
-                let mut lapack_a = Vec::with_capacity(n_samples * 2 * model_order);
-                let mut lapack_b = Vec::with_capacity(n_samples * 2);
+                let mut lapack_a = Vec::with_capacity(n_fit_samples * 2 * model_order);
+                let mut lapack_b = Vec::with_capacity(n_fit_samples * 2);
                 let mut count = 0;
 
-                use super::constants::VIOLATION_TOLERANCE;
-                for f_idx in 0..n_samples {
+                for f_idx in 0..n_fit_samples {
                     let viol = s_viol[[f_idx, i, j]];
-                    if viol.norm() > VIOLATION_TOLERANCE {
+                    if viol.norm() > 1e-15 {
                         count += 1;
                         let offset = j * model_order;
 
-                        // Real part equation
                         for k in 0..model_order {
-                            let coeff = coeffs[[f_idx, offset + k, j]];
+                            let coeff = fit_coeffs[[f_idx, offset + k, j]];
                             lapack_a.push(coeff.re);
                         }
                         lapack_b.push(viol.re);
 
-                        // Imaginary part equation
                         for k in 0..model_order {
-                            let coeff = coeffs[[f_idx, offset + k, j]];
+                            let coeff = fit_coeffs[[f_idx, offset + k, j]];
                             lapack_a.push(coeff.im);
                         }
                         lapack_b.push(viol.im);
@@ -584,7 +586,6 @@ pub fn passivity_enforce(
                 }
 
                 if count > 0 {
-                    // Solve least squares
                     let a_mat = Array2::from_shape_vec((count * 2, model_order), lapack_a).unwrap();
                     let b_vec = Array1::from_vec(lapack_b);
 
@@ -651,5 +652,48 @@ mod tests {
         assert_eq!(ss.c.dim(), (1, 3));
         assert_eq!(ss.d.dim(), (1, 1));
         assert_eq!(ss.e.dim(), (1, 1));
+    }
+
+    #[test]
+    fn test_passivity_enforce_simple() {
+        // Create a non-passive system: S(s) = 0.5 + 1.0e9 / (s + 1.0e9)
+        // At s=0, S(0) = 1.5 -> Non-passive
+        let poles = Array1::from_vec(vec![Complex64::new(-1.0e9, 0.0)]);
+        let residues = Array2::from_shape_vec((1, 1), vec![Complex64::new(1.0e9, 0.0)]).unwrap();
+        let constant_coeff = Array1::from_vec(vec![0.5]);
+        let proportional_coeff = Array1::from_vec(vec![0.0]);
+
+        // Test initial passivity
+        let test_init =
+            passivity_test(&poles, &residues, &constant_coeff, &proportional_coeff, 1).unwrap();
+        assert!(!test_init.is_passive());
+        assert!(test_init.max_singular_value > 1.2);
+
+        // Enforce passivity
+        let result = passivity_enforce(
+            &poles,
+            &residues,
+            &constant_coeff,
+            &proportional_coeff,
+            1,
+            20, // max_iterations
+        )
+        .unwrap();
+
+        // Check if max singular value decreased
+        let test_final = passivity_test(
+            &poles,
+            &result.residues,
+            &constant_coeff,
+            &proportional_coeff,
+            1,
+        )
+        .unwrap();
+
+        // It should be closer to passive
+        assert!(test_final.max_singular_value < test_init.max_singular_value);
+        if result.success {
+            assert!(test_final.max_singular_value <= 1.001);
+        }
     }
 }

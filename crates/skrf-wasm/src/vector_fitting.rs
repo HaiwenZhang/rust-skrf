@@ -153,7 +153,7 @@ impl WasmVectorFitting {
         let f_max = network.inner().frequency.stop();
         let result = self
             .inner
-            .passivity_enforce(network.inner().nports(), f_max, n_samples)
+            .passivity_enforce(network.inner().nports())
             .map_err(|e| JsValue::from_str(&e))?;
 
         let obj = js_sys::Object::new();

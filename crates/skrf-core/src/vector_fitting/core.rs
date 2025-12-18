@@ -416,8 +416,6 @@ impl VectorFitting {
     pub fn passivity_enforce(
         &mut self,
         nports: usize,
-        f_max: f64,
-        n_samples: Option<usize>,
     ) -> Result<super::passivity::PassivityEnforceResult, String> {
         let poles = self.poles.as_ref().ok_or("Model not fitted yet")?;
         let residues = self.residues.as_ref().ok_or("Model not fitted yet")?;
@@ -426,17 +424,12 @@ impl VectorFitting {
             .proportional_coeff
             .as_ref()
             .ok_or("Model not fitted yet")?;
-
-        let samples = n_samples.unwrap_or(200);
-
         let result = super::passivity::passivity_enforce(
             poles,
             residues,
             constant_coeff,
             proportional_coeff,
             nports,
-            f_max,
-            samples,
             self.max_iterations,
         )?;
 

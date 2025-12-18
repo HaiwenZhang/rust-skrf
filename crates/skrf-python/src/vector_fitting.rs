@@ -302,7 +302,7 @@ impl PyVectorFitting {
         let f_max = network.inner().frequency.stop();
         let result = self
             .inner
-            .passivity_enforce(network.inner().nports(), f_max, Some(n_samples))
+            .passivity_enforce(network.inner().nports())
             .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
 
         Ok((result.success, result.iterations, result.history_max_sigma))

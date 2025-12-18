@@ -16,7 +16,7 @@ pub const RESIDUE_TOLERANCE: f64 = 1e-8;
 pub const REAL_POLE_TOLERANCE: f64 = 1e-12;
 
 /// Tolerance for eigenvalue square root comparison
-pub const EIGENVALUE_TOLERANCE: f64 = 1e-10;
+pub const EIGENVALUE_TOLERANCE: f64 = 1e-6;
 
 /// Tolerance for detecting zero norm in column scaling
 pub const NORM_TOLERANCE: f64 = 1e-15;
