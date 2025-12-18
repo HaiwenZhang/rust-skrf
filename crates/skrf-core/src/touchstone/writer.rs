@@ -66,10 +66,9 @@ impl Touchstone {
                     write!(writer, " {:>15.9} {:>15.9}", v1, v2)?;
                 }
             } else {
-                for i in 0..self.nports {
-                    for j in 0..self.nports {
-                        let c = s_matrix[i][j];
-                        let (v1, v2) = self.format_complex(c);
+                for row in s_matrix.iter() {
+                    for c in row.iter() {
+                        let (v1, v2) = self.format_complex(*c);
                         write!(writer, " {:>15.9} {:>15.9}", v1, v2)?;
                     }
                 }

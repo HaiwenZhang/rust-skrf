@@ -143,7 +143,7 @@ impl Network {
     /// Renumber ports according to a mapping
     ///
     /// `from_ports` and `to_ports` specify the port renumbering.
-    /// For example, renumber(&[0,1], &[1,0]) swaps ports 0 and 1.
+    /// For example, `renumber(&[0,1], &[1,0])` swaps ports 0 and 1.
     pub fn renumbered(&self, from_ports: &[usize], to_ports: &[usize]) -> Result<Network> {
         let nports = self.nports();
         if from_ports.len() != to_ports.len() {

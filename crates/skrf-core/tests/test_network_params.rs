@@ -61,7 +61,7 @@ fn test_z_parameters() {
 fn test_y_parameters() {
     let ntwk = create_simple_network();
 
-    // Get Y-parameters  
+    // Get Y-parameters
     let y = ntwk.y();
     assert_eq!(y.shape(), &[2, 2, 2]);
 
@@ -98,7 +98,7 @@ fn test_conversions_round_trip() {
 }
 
 // ============================================================================
-// Z0 Getter Tests (Python line 1425-1488)  
+// Z0 Getter Tests (Python line 1425-1488)
 // ============================================================================
 
 #[test]
@@ -118,10 +118,7 @@ fn test_z0_scalar() {
 fn test_z0_vector() {
     let freq = Frequency::new(1.0, 1.0, 1, FrequencyUnit::GHz, SweepType::Linear);
     let s = Array3::<Complex64>::zeros((1, 2, 2));
-    let z0 = Array1::from_vec(vec![
-        Complex64::new(25.0, 0.0),
-        Complex64::new(75.0, 0.0),
-    ]);
+    let z0 = Array1::from_vec(vec![Complex64::new(25.0, 0.0), Complex64::new(75.0, 0.0)]);
     let ntwk = Network::new(freq, s, z0);
 
     assert_relative_eq!(ntwk.z0()[0].re, 25.0, epsilon = 1e-15);
@@ -182,7 +179,7 @@ fn test_s_deg() {
         for i in 0..ntwk.nports() {
             for j in 0..ntwk.nports() {
                 let deg = s_deg[[f, i, j]];
-                assert!(deg >= -180.0 && deg <= 180.0);
+                assert!((-180.0..=180.0).contains(&deg));
             }
         }
     }
@@ -200,7 +197,7 @@ fn test_s_rad() {
         for i in 0..ntwk.nports() {
             for j in 0..ntwk.nports() {
                 let rad = s_rad[[f, i, j]];
-                assert!(rad >= -std::f64::consts::PI && rad <= std::f64::consts::PI);
+                assert!((-std::f64::consts::PI..=std::f64::consts::PI).contains(&rad));
             }
         }
     }

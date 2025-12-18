@@ -36,7 +36,7 @@ pub enum SParamFormat {
 }
 
 impl SParamFormat {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "RI" => Some(SParamFormat::RI),
             "MA" => Some(SParamFormat::MA),
@@ -59,7 +59,7 @@ pub enum ParameterType {
 }
 
 impl ParameterType {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "S" => Some(ParameterType::S),
             "Y" => Some(ParameterType::Y),
@@ -160,8 +160,8 @@ impl Touchstone {
             }
 
             // Handle comments (v1 starts with !, v2 can be anywhere but usually line based)
-            if trimmed.starts_with('!') {
-                state.comments.push(trimmed[1..].trim().to_string());
+            if let Some(comment) = trimmed.strip_prefix('!') {
+                state.comments.push(comment.trim().to_string());
                 continue;
             }
 
@@ -217,18 +217,16 @@ impl Touchstone {
         while i < parts.len() {
             let part = parts[i].to_uppercase();
 
-            if let Some(unit) = FrequencyUnit::from_str(&part) {
+            if let Some(unit) = FrequencyUnit::parse(&part) {
                 freq_unit = unit;
-            } else if let Some(fmt) = SParamFormat::from_str(&part) {
+            } else if let Some(fmt) = SParamFormat::parse(&part) {
                 format = fmt;
-            } else if let Some(pt) = ParameterType::from_str(&part) {
+            } else if let Some(pt) = ParameterType::parse(&part) {
                 param_type = pt;
-            } else if part == "R" {
-                if i + 1 < parts.len() {
-                    if let Ok(r) = parts[i + 1].parse::<f64>() {
-                        z0 = r;
-                        i += 1;
-                    }
+            } else if part == "R" && i + 1 < parts.len() {
+                if let Ok(r) = parts[i + 1].parse::<f64>() {
+                    z0 = r;
+                    i += 1;
                 }
             }
 
@@ -443,6 +441,7 @@ impl ParserState {
         self.process_buffer()
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn process_buffer(&mut self) -> Result<(), TouchstoneError> {
         let n_values = match self.matrix_format {
             MatrixFormat::Full => self.nports * self.nports,
@@ -599,9 +598,9 @@ mod tests {
 
     #[test]
     fn test_sparam_format_from_str() {
-        assert_eq!(SParamFormat::from_str("RI"), Some(SParamFormat::RI));
-        assert_eq!(SParamFormat::from_str("ma"), Some(SParamFormat::MA));
-        assert_eq!(SParamFormat::from_str("DB"), Some(SParamFormat::DB));
-        assert_eq!(SParamFormat::from_str("invalid"), None);
+        assert_eq!(SParamFormat::parse("RI"), Some(SParamFormat::RI));
+        assert_eq!(SParamFormat::parse("ma"), Some(SParamFormat::MA));
+        assert_eq!(SParamFormat::parse("DB"), Some(SParamFormat::DB));
+        assert_eq!(SParamFormat::parse("invalid"), None);
     }
 }

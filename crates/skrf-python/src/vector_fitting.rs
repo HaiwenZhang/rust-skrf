@@ -9,6 +9,7 @@ use crate::network::PyNetwork;
 
 /// Python wrapper for VectorFitting
 #[pyclass(name = "VectorFitting")]
+#[derive(Default)]
 pub struct PyVectorFitting {
     inner: VectorFitting,
 }
@@ -62,7 +63,7 @@ impl PyVectorFitting {
                 fit_constant,
                 fit_proportional,
             )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     /// Get the RMS error between the fitted model and original network
@@ -222,7 +223,7 @@ impl PyVectorFitting {
                 Some(fitted_model_name),
                 create_reference_pins,
             )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     /// Generate SPICE subcircuit netlist as a string
@@ -247,7 +248,7 @@ impl PyVectorFitting {
                 Some(fitted_model_name),
                 create_reference_pins,
             )
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     /// Perform passivity test on the fitted model
@@ -264,7 +265,7 @@ impl PyVectorFitting {
         let result = self
             .inner
             .passivity_test(network.inner().nports())
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
         Ok(result.violation_bands)
     }
 
@@ -278,7 +279,7 @@ impl PyVectorFitting {
     pub fn is_passive(&self, network: &PyNetwork) -> PyResult<bool> {
         self.inner
             .is_passive(network.inner().nports())
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)
     }
 
     /// Enforce passivity of the fitted model
@@ -302,7 +303,7 @@ impl PyVectorFitting {
         let result = self
             .inner
             .passivity_enforce(network.inner().nports(), f_max, Some(n_samples))
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            .map_err(pyo3::exceptions::PyRuntimeError::new_err)?;
 
         Ok((result.success, result.iterations, result.history_max_sigma))
     }

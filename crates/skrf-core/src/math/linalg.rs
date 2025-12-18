@@ -129,6 +129,7 @@ pub fn singular_values(a: &Array2<Complex64>) -> Vec<f64> {
 /// Returns (U, singular_values, Vh) where:
 /// - U is m x m
 /// - Vh is n x n
+#[allow(clippy::type_complexity)]
 pub fn svd_complex(
     a: &Array2<Complex64>,
 ) -> Result<(Array2<Complex64>, Vec<f64>, Array2<Complex64>), &'static str> {
@@ -152,6 +153,7 @@ pub fn svd_complex(
 }
 
 /// Full SVD of real matrix: (U, S, Vh)
+#[allow(clippy::type_complexity)]
 #[allow(dead_code)]
 pub fn svd_real(a: &Array2<f64>) -> Result<(Array2<f64>, Vec<f64>, Array2<f64>), &'static str> {
     let (m, n) = a.dim();

@@ -138,7 +138,7 @@ impl Network {
     /// K = (1 - |S11|² - |S22|² + |Δ|²) / (2|S12||S21|)
     /// where Δ = S11*S22 - S12*S21
     ///
-    /// Returns array of shape [nfreq] containing K values.
+    /// Returns array of shape `[nfreq]` containing K values.
     pub fn stability(&self) -> Option<ndarray::Array1<f64>> {
         if self.nports() != 2 {
             return None;

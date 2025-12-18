@@ -111,7 +111,7 @@ impl PoleSet {
             .chain(self.complex_poles.iter().copied())
     }
 
-    /// Convert back to Array1<Complex64>
+    /// Convert back to `Array1<Complex64>`
     ///
     /// Returns poles in the original format (real + complex with positive imag).
     pub fn to_array(&self) -> Array1<Complex64> {

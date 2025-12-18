@@ -565,6 +565,7 @@ fn solve_with_scaling(
 }
 
 /// Fit residues using least squares
+#[allow(clippy::type_complexity)]
 pub fn fit_residues(
     poles: &Array1<Complex64>,
     freqs: &[f64],

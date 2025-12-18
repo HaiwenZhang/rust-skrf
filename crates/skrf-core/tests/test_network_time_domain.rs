@@ -208,7 +208,7 @@ fn test_impulse_response_from_file() {
     assert!(result.is_some(), "Impulse response from file should work");
 
     let (t, ir) = result.unwrap();
-    assert!(t.len() > 0);
+    assert!(!t.is_empty());
     assert_eq!(ir.shape()[1], 2);
     assert_eq!(ir.shape()[2], 2);
 }
@@ -222,7 +222,7 @@ fn test_step_response_from_file() {
     assert!(result.is_some(), "Step response from file should work");
 
     let (t, sr) = result.unwrap();
-    assert!(t.len() > 0);
+    assert!(!t.is_empty());
     assert_eq!(sr.shape()[1], 2);
     assert_eq!(sr.shape()[2], 2);
 }

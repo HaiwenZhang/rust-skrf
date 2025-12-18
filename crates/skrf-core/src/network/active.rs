@@ -146,7 +146,7 @@ impl Network {
     /// - target_port = 1: Load stability circle
     ///
     /// # Returns
-    /// (centers, radii) where centers is [nfreq] complex values and radii is [nfreq] real values
+    /// (centers, radii) where centers is `[nfreq]` complex values and radii is `[nfreq]` real values
     pub fn stability_circle(&self, target_port: usize) -> Option<(Array1<Complex64>, Array1<f64>)> {
         if self.nports() != 2 || target_port > 1 {
             return None;

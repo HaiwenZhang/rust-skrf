@@ -22,13 +22,14 @@ use num_complex::Complex64;
 /// * `residues` - Fitted residues [n_responses, n_poles]
 /// * `constant_coeff` - Constant coefficients (d terms)
 /// * `proportional_coeff` - Proportional coefficients (e terms)
-/// * `z0` - Reference impedances [nports]
+/// * `z0` - Reference impedances `[nports]`
 /// * `nports` - Number of ports
 /// * `model_name` - Name of the subcircuit
 /// * `create_reference_pins` - If true, create separate reference pins for each port
 ///
 /// # Returns
 /// SPICE netlist as a String
+#[allow(clippy::too_many_arguments)]
 pub fn generate_spice_subcircuit_s(
     poles: &Array1<Complex64>,
     residues: &Array2<Complex64>,
@@ -307,7 +308,7 @@ pub fn generate_spice_subcircuit_s(
                     i + 1,
                     xk_im_i,
                     xk_re_i,
-                    -1.0 * pole_im
+                    -pole_im
                 )
                 .unwrap();
                 writeln!(
@@ -360,6 +361,7 @@ pub fn generate_spice_subcircuit_s(
 }
 
 /// Write SPICE subcircuit to a file
+#[allow(clippy::too_many_arguments)]
 pub fn write_spice_subcircuit_s_to_file(
     path: &Path,
     poles: &Array1<Complex64>,

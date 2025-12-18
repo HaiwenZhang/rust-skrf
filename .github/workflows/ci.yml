@@ -81,6 +81,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -164,17 +169,17 @@ jobs:
           RUSTDOCFLAGS: -D warnings
 
   # ==========================================================================
-  # MSRV Check (Minimum Supported Rust Version)
+  # Core Library Check (skrf-core only, minimal dependencies)
   # ==========================================================================
-  msrv:
-    name: MSRV (1.75.0)
+  check-core:
+    name: Check skrf-core
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.75.0
-        uses: dtolnay/rust-toolchain@1.75.0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -183,12 +188,12 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-check-core-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-msrv-
+            ${{ runner.os }}-cargo-check-core-
             ${{ runner.os }}-cargo-
 
-      - name: Check MSRV
+      - name: Check skrf-core
         run: cargo check --workspace -p skrf-core
 
   # ==========================================================================

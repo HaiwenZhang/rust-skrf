@@ -137,7 +137,8 @@ fn test_ts_example_5_6() {
 
     for filename in ["ex_5.ts", "ex_6.ts"] {
         let path = format!("{}/{}", TEST_DATA_DIR, filename);
-        let ts = Network::from_touchstone(&path).expect(&format!("Failed to load {}", filename));
+        let ts = Network::from_touchstone(&path)
+            .unwrap_or_else(|_| panic!("Failed to load {}", filename));
 
         // 4 ports, 2 freq points (5e9, 6e9)
         assert_eq!(ts.nports(), 4);

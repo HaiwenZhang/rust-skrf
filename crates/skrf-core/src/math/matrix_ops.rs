@@ -42,7 +42,7 @@ pub fn z0_diag_matrix(z0: &ndarray::Array1<Complex64>) -> Array2<Complex64> {
     diag_matrix(z0.as_slice().unwrap())
 }
 
-/// Apply a per-frequency matrix transformation: result[f] = left * s[f] * right
+/// Apply a per-frequency matrix transformation: `result[f] = left * s[f] * right`
 ///
 /// This is a common pattern in S-parameter conversions where we sandwich
 /// each frequency slice between two matrices.

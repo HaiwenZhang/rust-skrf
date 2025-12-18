@@ -36,12 +36,12 @@ impl Network {
         // Convert s-parameter array to Vec<Vec<Vec<Complex64>>>
         let mut s_data = Vec::with_capacity(nfreq);
         for f_idx in 0..nfreq {
-            let mut s_matrix = vec![vec![num_complex::Complex64::new(0.0, 0.0); nports]; nports];
-            for i in 0..nports {
-                for j in 0..nports {
-                    s_matrix[i][j] = self.s[[f_idx, i, j]];
-                }
-            }
+            let s_at_freq = self.s.index_axis(ndarray::Axis(0), f_idx);
+            let s_matrix: Vec<Vec<num_complex::Complex64>> = s_at_freq
+                .rows()
+                .into_iter()
+                .map(|row| row.to_vec())
+                .collect();
             s_data.push(s_matrix);
         }
 

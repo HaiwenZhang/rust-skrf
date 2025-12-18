@@ -11,6 +11,7 @@ const TEST_DATA_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/da
 
 /// Test reading simple_touchstone.s2p and compare with known true values
 /// Migrated from: test_read_data
+#[allow(clippy::needless_range_loop)]
 #[test]
 fn test_read_data() {
     let path = format!("{}/simple_touchstone.s2p", TEST_DATA_DIR);
@@ -127,7 +128,8 @@ fn test_read_comments() {
 fn test_read_ntwk_files() {
     for i in 1..=3 {
         let path = format!("{}/ntwk{}.s2p", TEST_DATA_DIR, i);
-        let ts = Touchstone::from_file(&path).expect(&format!("Failed to load ntwk{}.s2p", i));
+        let ts =
+            Touchstone::from_file(&path).unwrap_or_else(|_| panic!("Failed to load ntwk{}.s2p", i));
 
         assert_eq!(ts.nports, 2);
         assert!(ts.nfreq() > 0);
@@ -149,7 +151,7 @@ fn test_network_from_all_test_files() {
     for file in &files {
         let path = format!("{}/{}", TEST_DATA_DIR, file);
         let ntwk = Network::from_touchstone(&path)
-            .expect(&format!("Failed to create Network from {}", file));
+            .unwrap_or_else(|_| panic!("Failed to create Network from {}", file));
 
         assert!(ntwk.nfreq() > 0, "{} should have frequency points", file);
         assert!(ntwk.nports() > 0, "{} should have ports", file);

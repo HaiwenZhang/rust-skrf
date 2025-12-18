@@ -85,7 +85,7 @@ impl PyNetwork {
         self.inner.y().to_pyarray(py)
     }
 
-    /// Get reference impedance as numpy array [nports]
+    /// Get reference impedance as numpy array `[nports]`
     #[getter]
     pub fn z0<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<Complex64>> {
         self.inner.z0().to_pyarray(py)

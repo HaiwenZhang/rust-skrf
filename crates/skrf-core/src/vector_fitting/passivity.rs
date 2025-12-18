@@ -246,7 +246,7 @@ pub fn passivity_test(
     }
 
     // Include DC if not already present
-    if !freqs_violation.iter().any(|&f| f == 0.0) {
+    if !freqs_violation.contains(&0.0) {
         freqs_violation.push(0.0);
     }
 
@@ -312,6 +312,7 @@ fn singular_values_complex(a: &Array2<Complex64>) -> Result<Vec<f64>, String> {
 }
 
 /// Perform full SVD on a complex matrix, returning U, S, Vh
+#[allow(clippy::type_complexity)]
 fn svd_complex_full(
     a: &Array2<Complex64>,
 ) -> Result<(Array2<Complex64>, Vec<f64>, Array2<Complex64>), String> {
@@ -319,6 +320,7 @@ fn svd_complex_full(
 }
 
 /// Perform full SVD on a real matrix
+#[allow(clippy::type_complexity)]
 #[allow(dead_code)]
 fn svd_real_full(a: &Array2<f64>) -> Result<(Array2<f64>, Vec<f64>, Array2<f64>), String> {
     linalg::svd_real(a).map_err(|e| e.to_string())
@@ -396,10 +398,9 @@ fn c_matrix_to_residues(
     for i in 0..nports {
         for j in 0..nports {
             let i_response = i * nports + j;
-            let mut z = 0; // residue index
             let mut k = j * model_order; // C_t column index
 
-            for pole in poles.iter() {
+            for (z, pole) in poles.iter().enumerate() {
                 if pole.im == 0.0 {
                     new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], 0.0);
                     k += 1;
@@ -407,7 +408,6 @@ fn c_matrix_to_residues(
                     new_residues[[i_response, z]] = Complex64::new(c_t[[i, k]], c_t[[i, k + 1]]);
                     k += 2;
                 }
-                z += 1;
             }
         }
     }
@@ -431,6 +431,7 @@ fn c_matrix_to_residues(
 ///
 /// # Returns
 /// `PassivityEnforceResult` with updated residues
+#[allow(clippy::too_many_arguments)]
 pub fn passivity_enforce(
     poles: &Array1<Complex64>,
     residues: &Array2<Complex64>,

@@ -26,7 +26,7 @@ impl FrequencyUnit {
     }
 
     /// Parse from string (case-insensitive)
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "hz" => Some(FrequencyUnit::Hz),
             "khz" => Some(FrequencyUnit::KHz),
@@ -241,9 +241,9 @@ mod tests {
 
     #[test]
     fn test_frequency_unit_from_str() {
-        assert_eq!(FrequencyUnit::from_str("ghz"), Some(FrequencyUnit::GHz));
-        assert_eq!(FrequencyUnit::from_str("GHZ"), Some(FrequencyUnit::GHz));
-        assert_eq!(FrequencyUnit::from_str("MHz"), Some(FrequencyUnit::MHz));
-        assert_eq!(FrequencyUnit::from_str("invalid"), None);
+        assert_eq!(FrequencyUnit::parse("ghz"), Some(FrequencyUnit::GHz));
+        assert_eq!(FrequencyUnit::parse("GHZ"), Some(FrequencyUnit::GHz));
+        assert_eq!(FrequencyUnit::parse("MHz"), Some(FrequencyUnit::MHz));
+        assert_eq!(FrequencyUnit::parse("invalid"), None);
     }
 }
