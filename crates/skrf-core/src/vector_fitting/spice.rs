@@ -360,6 +360,226 @@ pub fn generate_spice_subcircuit_s(
     netlist
 }
 
+/// Generate HSPICE-specific SPICE subcircuit using G-element FOSTER syntax
+///
+/// This format is highly efficient for HSPICE simulations as it uses the simulator's
+/// built-in support for pole-residue (Foster) forms.
+#[allow(clippy::too_many_arguments)]
+pub fn generate_hspice_subcircuit_s(
+    poles: &Array1<Complex64>,
+    residues: &Array2<Complex64>,
+    constant_coeff: &Array1<f64>,
+    proportional_coeff: &Array1<f64>,
+    z0: &Array1<Complex64>,
+    nports: usize,
+    model_name: &str,
+    create_reference_pins: bool,
+) -> String {
+    let mut netlist = String::new();
+
+    // Check if we need proportional term network
+    let build_e = proportional_coeff.iter().any(|&e| e != 0.0);
+
+    // Write title line
+    writeln!(
+        netlist,
+        "* EQUIVALENT CIRCUIT FOR VECTOR FITTED S-MATRIX (HSPICE FORMAT)"
+    )
+    .unwrap();
+    writeln!(netlist, "* Created using rust-skrf VectorFitting").unwrap();
+    writeln!(netlist, "* Uses G-element FOSTER pole-residue form").unwrap();
+    writeln!(netlist, "*").unwrap();
+
+    // Create subcircuit pin string
+    let input_nodes: String = if create_reference_pins {
+        (0..nports)
+            .map(|i| format!("p{} p{}_ref", i + 1, i + 1))
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        (0..nports)
+            .map(|i| format!("p{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    writeln!(netlist, ".SUBCKT {} {}", model_name, input_nodes).unwrap();
+
+    // 1. Setup port sensing and a_j signal nodes
+    for j in 0..nports {
+        let node_ref_j = if create_reference_pins {
+            format!("p{}_ref", j + 1)
+        } else {
+            "0".to_string()
+        };
+
+        let z0_j = z0[j].re;
+        let gain_vccs_a_j = 1.0 / 2.0 / z0_j.sqrt();
+        let gain_cccs_a_j = z0_j.sqrt() / 2.0;
+
+        writeln!(netlist, "* Input wave extraction for port {}", j + 1).unwrap();
+        // Dummy voltage source for current sensing
+        writeln!(netlist, "V_dummy_{} p{} s_int_{} 0", j + 1, j + 1, j + 1).unwrap();
+        // Reference resistor
+        writeln!(
+            netlist,
+            "R_ref_{} s_int_{} {} {}",
+            j + 1,
+            j + 1,
+            node_ref_j,
+            z0_j
+        )
+        .unwrap();
+
+        // Node a_j = gain_v * V + gain_i * I
+        writeln!(
+            netlist,
+            "E_aj_v aj_v_{} 0 p{} {} {}",
+            j + 1,
+            j + 1,
+            node_ref_j,
+            gain_vccs_a_j
+        )
+        .unwrap();
+        writeln!(
+            netlist,
+            "H_aj aj_{} aj_v_{} V_dummy_{} {}",
+            j + 1,
+            j + 1,
+            j + 1,
+            gain_cccs_a_j
+        )
+        .unwrap();
+
+        if build_e {
+            // Differentiation for proportional term: e_j = d/dt (a_j) = s * a_j
+            writeln!(netlist, "Le_diff_{} e_{} 0 1.0", j + 1, j + 1).unwrap();
+            writeln!(
+                netlist,
+                "Ge_diff_{} 0 e_{} aj_{} 0 1.0",
+                j + 1,
+                j + 1,
+                j + 1
+            )
+            .unwrap();
+        }
+    }
+
+    // 2. Reflect current back into port nodes using FOSTER form
+    for i in 0..nports {
+        let node_ref_i = if create_reference_pins {
+            format!("p{}_ref", i + 1)
+        } else {
+            "0".to_string()
+        };
+
+        let z0_i = z0[i].re;
+        let gain_b_i = 2.0 / z0_i.sqrt();
+
+        writeln!(netlist, "*").unwrap();
+        writeln!(netlist, "* Reflected wave contribution to port {}", i + 1).unwrap();
+
+        for j in 0..nports {
+            let idx_s_i_j = i * nports + j;
+            let d = constant_coeff[idx_s_i_j];
+            let e = proportional_coeff[idx_s_i_j];
+
+            // S_ij(s) = d + s*e + sum( r / (s-p) )
+            // contribution = gain_b_i * S_ij * aj
+
+            // FOSTER part: d + sum( r / (s-p) )
+            let mut foster_line = format!(
+                "G_S{}_{} {} s_int_{} FOSTER aj_{} 0 {}",
+                i + 1,
+                j + 1,
+                node_ref_i,
+                i + 1,
+                j + 1,
+                d * gain_b_i
+            );
+
+            let mut has_poles = false;
+            for (k, &pole) in poles.iter().enumerate() {
+                let residue = residues[[idx_s_i_j, k]];
+                if pole.im == 0.0 {
+                    // Real pole
+                    write!(
+                        foster_line,
+                        " ({:.9e}, 0)/({:.9e}, 0)",
+                        residue.re * gain_b_i,
+                        pole.re
+                    )
+                    .unwrap();
+                    has_poles = true;
+                } else if pole.im > 0.0 {
+                    // Complex-conjugate pole pair. Specify one, HSPICE adds conjugate.
+                    write!(
+                        foster_line,
+                        " ({:.9e}, {:.9e})/({:.9e}, {:.9e})",
+                        residue.re * gain_b_i,
+                        residue.im * gain_b_i,
+                        pole.re,
+                        pole.im
+                    )
+                    .unwrap();
+                    has_poles = true;
+                }
+            }
+
+            if d != 0.0 || has_poles {
+                writeln!(netlist, "{}", foster_line).unwrap();
+            }
+
+            if build_e && e != 0.0 {
+                // Proportional part: gain_b_i * e * s * a_j = gain_b_i * e * e_j
+                writeln!(
+                    netlist,
+                    "G_E{}_{} {} s_int_{} e_{} 0 {}",
+                    i + 1,
+                    j + 1,
+                    node_ref_i,
+                    i + 1,
+                    j + 1,
+                    e * gain_b_i
+                )
+                .unwrap();
+            }
+        }
+    }
+
+    writeln!(netlist, ".ENDS {}", model_name).unwrap();
+    netlist
+}
+
+/// Write HSPICE subcircuit to a file
+#[allow(clippy::too_many_arguments)]
+pub fn write_hspice_subcircuit_s_to_file(
+    path: &Path,
+    poles: &Array1<Complex64>,
+    residues: &Array2<Complex64>,
+    constant_coeff: &Array1<f64>,
+    proportional_coeff: &Array1<f64>,
+    z0: &Array1<Complex64>,
+    nports: usize,
+    model_name: &str,
+    create_reference_pins: bool,
+) -> io::Result<()> {
+    let netlist = generate_hspice_subcircuit_s(
+        poles,
+        residues,
+        constant_coeff,
+        proportional_coeff,
+        z0,
+        nports,
+        model_name,
+        create_reference_pins,
+    );
+
+    let mut file = File::create(path)?;
+    file.write_all(netlist.as_bytes())?;
+    Ok(())
+}
+
 /// Write SPICE subcircuit to a file
 #[allow(clippy::too_many_arguments)]
 pub fn write_spice_subcircuit_s_to_file(
@@ -416,5 +636,30 @@ mod tests {
         assert!(netlist.contains(".ENDS test_model"));
         assert!(netlist.contains("V1 p1 s1 0"));
         assert!(netlist.contains("R1 s1 0 50"));
+    }
+
+    #[test]
+    fn test_generate_hspice_1port() {
+        let poles = Array1::from_vec(vec![Complex64::new(-1e9, 0.0)]);
+        let residues = Array2::from_shape_vec((1, 1), vec![Complex64::new(0.5, 0.0)]).unwrap();
+        let constant_coeff = Array1::from_vec(vec![0.1]);
+        let proportional_coeff = Array1::from_vec(vec![0.0]);
+        let z0 = Array1::from_vec(vec![Complex64::new(50.0, 0.0)]);
+
+        let netlist = generate_hspice_subcircuit_s(
+            &poles,
+            &residues,
+            &constant_coeff,
+            &proportional_coeff,
+            &z0,
+            1,
+            "hspice_model",
+            false,
+        );
+
+        assert!(netlist.contains(".SUBCKT hspice_model"));
+        assert!(netlist.contains("FOSTER"));
+        assert!(netlist.contains("aj_1"));
+        assert!(netlist.contains("V_dummy_1 p1 s_int_1 0"));
     }
 }
