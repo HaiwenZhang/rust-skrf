@@ -36,4 +36,3 @@ dev = [
 # Use ABI3 for stable Python ABI across versions
 features = ["pyo3/extension-module", "pyo3/abi3-py310"]
 module-name = "skrf_python"
-python-source = "python"
