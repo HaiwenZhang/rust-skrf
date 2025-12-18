@@ -93,6 +93,8 @@ pub struct Touchstone {
     pub is_v2: bool,
     /// Mixed-mode order (if specified)
     pub mixed_mode_order: Vec<String>,
+    /// Whether noise data was encountered
+    pub noisy: bool,
 }
 
 impl Touchstone {
@@ -213,8 +215,21 @@ impl Touchstone {
     /// Parse the option line (# Hz S RI R 50)
     pub fn parse_option_line(
         line: &str,
+        is_v2: bool,
     ) -> Result<(FrequencyUnit, SParamFormat, f64, ParameterType), TouchstoneError> {
         let parts: Vec<&str> = line[1..].split_whitespace().collect();
+        if parts.is_empty() {
+            return Ok((
+                FrequencyUnit::GHz,
+                if is_v2 {
+                    SParamFormat::MA
+                } else {
+                    SParamFormat::RI
+                },
+                50.0,
+                ParameterType::S,
+            ));
+        }
 
         let mut freq_unit = FrequencyUnit::GHz;
         let mut format = SParamFormat::RI;
@@ -446,7 +461,7 @@ impl ParserState {
     }
 
     fn parse_option_line(&mut self, line: &str) -> Result<(), TouchstoneError> {
-        let (u, f, z, p) = Touchstone::parse_option_line(line)?;
+        let (u, f, z, p) = Touchstone::parse_option_line(line, self.is_v2)?;
         self.freq_unit = u;
         self.format = f;
         self.param_type = p;
@@ -621,6 +636,7 @@ impl ParserState {
             param_type: self.param_type,
             is_v2: self.is_v2,
             mixed_mode_order: self.mixed_mode_order,
+            noisy: self.noise_data_encountered,
         })
     }
 }
@@ -640,14 +656,14 @@ mod tests {
     #[test]
     fn test_parse_option_line() {
         let (unit, format, z0, param_type) =
-            Touchstone::parse_option_line("# GHz S RI R 50").unwrap();
+            Touchstone::parse_option_line("# GHz S RI R 50", false).unwrap();
         assert_eq!(unit, FrequencyUnit::GHz);
         assert_eq!(format, SParamFormat::RI);
         assert_eq!(z0, 50.0);
         assert_eq!(param_type, ParameterType::S);
 
         let (unit, format, z0, param_type) =
-            Touchstone::parse_option_line("# MHz S MA R 75").unwrap();
+            Touchstone::parse_option_line("# MHz S MA R 75", false).unwrap();
         assert_eq!(unit, FrequencyUnit::MHz);
         assert_eq!(format, SParamFormat::MA);
         assert_eq!(z0, 75.0);

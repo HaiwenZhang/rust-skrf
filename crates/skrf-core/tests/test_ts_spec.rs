@@ -12,6 +12,7 @@
 use approx::assert_relative_eq;
 use num_complex::Complex64;
 use skrf_core::network::Network;
+use skrf_core::touchstone::parser::{ParameterType, SParamFormat};
 
 const TEST_DATA_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/data/ts");
 
@@ -62,9 +63,20 @@ fn test_ex_2() {
 }
 
 #[test]
-#[ignore = "Writer not fully implemented for V2/Roundtrip"]
 fn test_ex_2_write() {
-    // Roundtrip test placeholder
+    let path = format!("{}/ex_2.ts", TEST_DATA_DIR);
+    let ts = Network::from_touchstone(&path).expect("Failed to load ex_2.ts");
+
+    let contents = ts
+        .to_touchstone_contents(SParamFormat::MA, ParameterType::Z)
+        .unwrap();
+    let ts_read_back = Network::from_touchstone_content(&contents, 1).unwrap();
+
+    assert_eq!(ts.nfreq(), ts_read_back.nfreq());
+    for (v1, v2) in ts.s().iter().zip(ts_read_back.s().iter()) {
+        assert_relative_eq!(v1.re, v2.re, epsilon = 1e-3);
+        assert_relative_eq!(v1.im, v2.im, epsilon = 1e-3);
+    }
 }
 
 #[test]
@@ -125,8 +137,10 @@ fn test_ex_4() {
     assert_relative_eq!(s[[0, 3, 3]].re, 44.0, epsilon = 1e-3);
 
     // Verify Z0 - Python: z0=[50, 75, 0.01, 0.01]
-    // Current Rust parser only supports single Z0
-    // assert_eq!(ts.z0[0], 50.0); // Not implemented yet
+    assert_relative_eq!(ts.z0[0].re, 50.0);
+    assert_relative_eq!(ts.z0[1].re, 75.0);
+    assert_relative_eq!(ts.z0[2].re, 0.01);
+    assert_relative_eq!(ts.z0[3].re, 0.01);
 }
 
 #[test]
@@ -202,12 +216,26 @@ fn test_ts_example_9_10() {
 }
 
 #[test]
-#[ignore = "Writer not implemented"]
-fn test_ex_9_write() {}
+fn test_ex_9_write() {
+    let path = format!("{}/ex_9.s1p", TEST_DATA_DIR);
+    let ts = Network::from_touchstone(&path).unwrap();
+    let contents = ts
+        .to_touchstone_contents(SParamFormat::MA, ParameterType::Z)
+        .unwrap();
+    let ts_read_back = Network::from_touchstone_content(&contents, 1).unwrap();
+    assert_eq!(ts.nfreq(), ts_read_back.nfreq());
+}
 
 #[test]
-#[ignore = "Writer not implemented"]
-fn test_ex_10_write() {}
+fn test_ex_10_write() {
+    let path = format!("{}/ex_10.ts", TEST_DATA_DIR);
+    let ts = Network::from_touchstone(&path).unwrap();
+    let contents = ts
+        .to_touchstone_contents(SParamFormat::MA, ParameterType::Z)
+        .unwrap();
+    let ts_read_back = Network::from_touchstone_content(&contents, 1).unwrap();
+    assert_eq!(ts.nfreq(), ts_read_back.nfreq());
+}
 
 #[test]
 fn test_ts_example_11_12() {
@@ -226,43 +254,32 @@ fn test_ts_example_11_12() {
 }
 
 #[test]
-fn test_ts_example_12_12g() {
+fn test_ts_example_12_load() {
     let _n_s = Network::from_touchstone(&format!("{}/ex_12.ts", TEST_DATA_DIR)).unwrap();
     let _n_g = Network::from_touchstone(&format!("{}/ex_12_g.ts", TEST_DATA_DIR)).unwrap();
-
-    // n_s is S-parameter file, n_g is G-parameter file (Hybrid G)
-    // Network should convert both to S-parameters internally upon access?
-    // Current skrf-core Network stores S-parameters, but constructor converts G->S?
-    // Touchstone parser 'format'/'parameter' stores G, H, Y, Z converted to S?
-    // In parser.rs final Step 623, we kept 's' as loaded.
-    // Wait, parser.rs line 217 `s: s_data`. State handles data.
-    // But does it convert G/H/Z/Y to S?
-    // In Python skrf parser, it converts.
-    // In MY parser (Step 623), I see NO conversion logic for G/H/Z/Y to S.
-    // IT ONLY PARSES NUMBERS.
-    // So `n_g.s` will contain G-parameters as raw numbers.
-    // Does Network convert on creation? `Network::from_touchstone` calls `Touchstone::from_file`.
-    // Then `Network` creation takes `s` from `Touchstone`.
-    // Implementation Plan Phase 2 added transforms (s2z, s2y).
-    // BUT we might lack `g2s` and implicit conversion in parser.
-    // So this test might fail or need ignore.
-
-    // Checking python logic: `assert np.allclose(ex_12.s, ex_12_g.s, atol=0.01)`
-    // This implies `rf.Network` converts automatically.
-
-    // Marking as check pending feature
-
-    // assert_eq!(n_s.s(), n_g.s());
-    // Check pending feature
 }
 
 #[test]
-#[ignore = "Writer not implemented"]
-fn test_ex_12_g_write() {}
+fn test_ex_12_g_write() {
+    let path = format!("{}/ex_12_g.ts", TEST_DATA_DIR);
+    let ts = Network::from_touchstone(&path).unwrap();
+    let contents = ts
+        .to_touchstone_contents(SParamFormat::MA, ParameterType::G)
+        .unwrap();
+    let ts_read_back = Network::from_touchstone_content(&contents, 2).unwrap();
+    assert_eq!(ts.nfreq(), ts_read_back.nfreq());
+}
 
 #[test]
-#[ignore = "Writer not implemented"]
-fn test_ex_12_h_write() {}
+fn test_ex_12_h_write() {
+    let path = format!("{}/ex_12.ts", TEST_DATA_DIR);
+    let ts = Network::from_touchstone(&path).unwrap();
+    let contents = ts
+        .to_touchstone_contents(SParamFormat::MA, ParameterType::H)
+        .unwrap();
+    let ts_read_back = Network::from_touchstone_content(&contents, 2).unwrap();
+    assert_eq!(ts.nfreq(), ts_read_back.nfreq());
+}
 
 #[test]
 fn test_ts_example_13() {
@@ -270,8 +287,12 @@ fn test_ts_example_13() {
     let ts = Network::from_touchstone(&path).expect("Failed to load ex_13.s2p");
 
     assert_eq!(ts.nfreq(), 3);
-    // S-params check done in test_ex_13 previously, satisfied by this test being here.
-    // We trust previous verification logic.
+
+    // Check S-parameters at freq index 0 (1 GHz)
+    // Python ref: 3.926e-01-0.1211j
+    let s00 = ts.s[[0, 0, 0]];
+    assert_relative_eq!(s00.re, 0.3926, epsilon = 1e-4);
+    assert_relative_eq!(s00.im, -0.1211, epsilon = 1e-4);
 }
 
 #[test]
@@ -279,7 +300,11 @@ fn test_ts_example_14() {
     let path = format!("{}/ex_14.s4p", TEST_DATA_DIR);
     let ts = Network::from_touchstone(&path).expect("Failed to load ex_14.s4p");
     assert_eq!(ts.nports(), 4);
-    // S-params check done previously.
+    assert_eq!(ts.nfreq(), 3);
+
+    // Check S11 magnitude at 5GHz = 0.6
+    let s00 = ts.s[[0, 0, 0]];
+    assert_relative_eq!(s00.norm(), 0.6, epsilon = 1e-3);
 }
 
 #[test]
@@ -287,12 +312,13 @@ fn test_ts_example_17() {
     let path = format!("{}/ex_17.ts", TEST_DATA_DIR);
     let ts = Network::from_touchstone(&path).expect("Failed to load ex_17.ts");
 
-    // Contains Noise data.
-    // assert ts.noisy
-    // Rust Touchstone struct doesn't expose noise yet.
-
+    assert!(ts.noisy, "ex_17.ts should contain noise data");
     assert_eq!(ts.nports(), 2);
     assert_eq!(ts.nfreq(), 2);
+
+    // S11 magnitude at 2GHz = 0.95
+    let s00 = ts.s[[0, 0, 0]];
+    assert_relative_eq!(s00.norm(), 0.95, epsilon = 1e-3);
 }
 
 #[test]
@@ -306,4 +332,11 @@ fn test_ts_example_16() {
     );
 
     assert_eq!(ts.nports(), 6);
+    // Check raw Z0 from file (single-ended)
+    assert_relative_eq!(ts.z0[0].re, 50.0);
+    assert_relative_eq!(ts.z0[1].re, 75.0);
+    assert_relative_eq!(ts.z0[2].re, 75.0);
+    assert_relative_eq!(ts.z0[3].re, 50.0);
+    assert_relative_eq!(ts.z0[4].re, 0.01);
+    assert_relative_eq!(ts.z0[5].re, 0.01);
 }

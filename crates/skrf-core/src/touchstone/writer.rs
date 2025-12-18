@@ -3,12 +3,24 @@
 //! Writes S-parameter data to Touchstone format files.
 
 use num_complex::Complex64;
+use std::fmt;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Cursor, Write};
 use std::path::Path;
 
 use super::parser::{SParamFormat, Touchstone, TouchstoneError};
 use crate::frequency::FrequencyUnit;
+
+impl fmt::Display for Touchstone {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut buf = Vec::new();
+        let mut writer = Cursor::new(&mut buf);
+        if self.write_to(&mut writer).is_err() {
+            return Err(fmt::Error);
+        }
+        write!(f, "{}", String::from_utf8_lossy(&buf))
+    }
+}
 
 impl Touchstone {
     /// Write to a Touchstone file
@@ -29,13 +41,20 @@ impl Touchstone {
         // Write option line
         writeln!(
             writer,
-            "# {} S {} R {}",
+            "# {} {} {} R {}",
             match self.frequency.unit() {
                 FrequencyUnit::Hz => "HZ",
                 FrequencyUnit::KHz => "KHZ",
                 FrequencyUnit::MHz => "MHZ",
                 FrequencyUnit::GHz => "GHZ",
                 FrequencyUnit::THz => "THZ",
+            },
+            match self.param_type {
+                super::parser::ParameterType::S => "S",
+                super::parser::ParameterType::Y => "Y",
+                super::parser::ParameterType::Z => "Z",
+                super::parser::ParameterType::G => "G",
+                super::parser::ParameterType::H => "H",
             },
             match self.format {
                 SParamFormat::RI => "RI",

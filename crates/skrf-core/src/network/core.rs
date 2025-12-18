@@ -6,7 +6,7 @@ use ndarray::{Array1, Array3};
 use num_complex::Complex64;
 
 use crate::frequency::Frequency;
-use crate::math::transforms::{y2s, z2s};
+use crate::math::transforms::{g2s, h2s, y2s, z2s};
 use crate::touchstone::Touchstone;
 
 use anyhow::{bail, Result};
@@ -26,6 +26,8 @@ pub struct Network {
     pub comments: Vec<String>,
     /// Mixed-mode order (for TS 2.0)
     pub mixed_mode_order: Vec<String>,
+    /// Whether noise data was encountered
+    pub noisy: bool,
 }
 
 impl Network {
@@ -38,6 +40,7 @@ impl Network {
             name: None,
             comments: Vec::new(),
             mixed_mode_order: Vec::new(),
+            noisy: false,
         };
         net.validate()?;
         Ok(net)
@@ -127,6 +130,7 @@ impl Network {
         Self::new(ts.frequency, s, z0).map(|mut net| {
             net.comments = ts.comments;
             net.mixed_mode_order = ts.mixed_mode_order;
+            net.noisy = ts.noisy;
             net
         })
     }
@@ -149,7 +153,8 @@ impl Network {
                 let y_vals = Self::denormalize_v1_params(&params, ts, false);
                 y2s(&y_vals, z0)
             }
-            _ => params, // G and H: pass through (TODO: implement g2s, h2s)
+            ParameterType::G => g2s(&params, z0).unwrap_or(params),
+            ParameterType::H => h2s(&params, z0).unwrap_or(params),
         }
     }
 
